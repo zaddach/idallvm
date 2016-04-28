@@ -1,0 +1,3 @@
+[submodule "libqemu"]
+	path = libqemu
+	url = git@github.com:zaddach/libqemu.git
