@@ -14,6 +14,11 @@
 #include <loader.hpp>
 #include <kernwin.hpp>
 
+#include "idallvm/plugin.h"
+#include "idallvm/msg.h"
+#include "idallvm/string.h"
+#include "idallvm/ida_util.h"
+
 //--------------------------------------------------------------------------
 static qstrvec_t graph_text;
 
@@ -310,18 +315,20 @@ bool idaapi menu_callback(void *ud)
 }
 
 //--------------------------------------------------------------------------
-int idaapi init(void)
+int idaapi PLUGIN_init(void)
 {
-  return ( callui(ui_get_hwnd).vptr != NULL || is_idaq() ) ? PLUGIN_OK : PLUGIN_SKIP;
+    ProcessorInformation processor_info = ida_get_processor_information();
+  
+    return ida_is_graphical_mode() ? PLUGIN_KEEP : PLUGIN_SKIP;
 }
 
 //--------------------------------------------------------------------------
-void idaapi term(void)
+void idaapi PLUGIN_term(void)
 {
 }
 
 //--------------------------------------------------------------------------
-void idaapi run(int /*arg*/)
+void idaapi PLUGIN_run(int /*arg*/)
 {
   HWND hwnd = NULL;
   TForm *form = create_tform("Sample graph", &hwnd);
@@ -345,18 +352,15 @@ void idaapi run(int /*arg*/)
 }
 
 //--------------------------------------------------------------------------
-static const char comment[] = "This is a sample graph plugin.";
+static const char PLUGIN_comment[] = PLUGIN_COMMENT;
 
-static const char help[] =
-  "A sample graph plugin module\n"
-  "\n"
-  "This module shows you how to create a graph viewer.";
+static const char PLUGIN_help[] = PLUGIN_HELP;
 
 //--------------------------------------------------------------------------
 // This is the preferred name of the plugin module in the menu system
 // The preferred name may be overriden in plugins.cfg file
 
-static const char wanted_name[] = "Create sample graph view";
+static const char PLUGIN_wanted_name[] = PLUGIN_WANTED_NAME;
 
 
 // This is the preferred hotkey for the plugin module
@@ -364,7 +368,7 @@ static const char wanted_name[] = "Create sample graph view";
 // Note: IDA won't tell you if the hotkey is not correct
 //       It will just disable the hotkey.
 
-static const char wanted_hotkey[] = "";
+static const char PLUGIN_wanted_hotkey[] = PLUGIN_HOTKEY;
 
 
 //--------------------------------------------------------------------------
@@ -376,18 +380,18 @@ plugin_t PLUGIN =
 {
   IDP_INTERFACE_VERSION,
   0,                    // plugin flags
-  init,                 // initialize
+  PLUGIN_init,          // initialize
 
-  term,                 // terminate. this pointer may be NULL.
+  PLUGIN_term,          // terminate. this pointer may be NULL.
 
-  run,                  // invoke plugin
+  PLUGIN_run,           // invoke plugin
 
-  comment,              // long comment about the plugin
+  PLUGIN_comment,       // long comment about the plugin
                         // it could appear in the status line
                         // or as a hint
 
-  help,                 // multiline help about the plugin
+  PLUGIN_help,          // multiline help about the plugin
 
-  wanted_name,          // the preferred short name of the plugin
-  wanted_hotkey         // the preferred hotkey to run the plugin
+  PLUGIN_wanted_name,   // the preferred short name of the plugin
+  PLUGIN_wanted_hotkey  // the preferred hotkey to run the plugin
 };

@@ -42,8 +42,11 @@ ExternalProject_Add( libqemu
 SET( QEMU_LIB_ARM ${CMAKE_CURRENT_BINARY_DIR}/libqemu/arm-lib/libqemu-arm.so )
 SET( QEMU_LIB_I386 ${CMAKE_CURRENT_BINARY_DIR}/libqemu/i386-lib/libqemu-i386.so )
 
+INCLUDE_DIRECTORIES( ${CMAKE_CURRENT_SOURCE_DIR}/include )
+
 SET( SOURCE_FILES
-    "src/plugin_main.cpp" )
+    "src/plugin_main.cpp"
+    "src/ida_util.cpp" )
 
 ADD_LIBRARY( ida-llvm MODULE ${SOURCE_FILES} )
 SET_TARGET_PROPERTIES( 
