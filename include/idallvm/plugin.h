@@ -6,6 +6,7 @@
 #endif /* !defined(__cplusplus) */
 
 #include <pro.h>
+#include <loader.hpp>
 
 #define PLUGIN_NAME "IDA-LLVM"
 #define PLUGIN_WANTED_NAME "LLVM translator"

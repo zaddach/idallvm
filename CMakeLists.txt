@@ -5,12 +5,16 @@ SET( CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules ${CMAKE_MODULE_
 
 FIND_PACKAGE( IDA )
 FIND_PACKAGE( LLVM REQUIRED COMPONENTS jit bitreader bitwriter ipo linker engine irreader)
+FIND_PACKAGE( Qt4 REQUIRED QtCore )
 
 INCLUDE( ExternalProject )
 
 INCLUDE_DIRECTORIES( ${IDA_INCLUDE_DIRECTORIES} ${LLVM_INCLUDE_DIRS} )
-ADD_DEFINITIONS( ${LLVM_DEFINITIONS} -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS )
+ADD_DEFINITIONS( ${LLVM_DEFINITIONS} -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DQT_NAMESPACE=QT )
 LINK_DIRECTORIES( ${LLVM_LIBRARY_DIRS})
+
+# IDA Pro is compiled with Qt encapsulated in namespace "QT"
+ADD_DEFINITIONS( -DQT_NAMESPACE=QT )
 
 # Build qemulib
 IF( NOT CMAKE_BUILD_TYPE )
@@ -32,21 +36,20 @@ ENDIF (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libqemu/configure")
 ExternalProject_Add( libqemu
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libqemu
         CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/libqemu/configure --enable-lib --target-list=arm-lib,i386-lib,x86_64-lib 
-            --prefix=${CMAKE_CURRENT_BINARY_DIR}/libqemu --cxx=clang++-3.5 --clang=clang-3.5 --with-llvm-config=${LLVM_CONFIG}  ${QEMU_DEBUG}
+            --prefix=${CMAKE_CURRENT_BINARY_DIR}/libqemu --cxx=clang++-3.5 --clang=clang-3.5 --with-llvm-config=${LLVM_CONFIG}  
+            --extra-cflags=-m32 --extra-cxxflags=-m32 ${QEMU_DEBUG}
         BUILD_COMMAND $(MAKE)
         BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libqemu
         INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/libqemu
         INSTALL_COMMAND make install
 )
 
-SET( QEMU_LIB_ARM ${CMAKE_CURRENT_BINARY_DIR}/libqemu/arm-lib/libqemu-arm.so )
-SET( QEMU_LIB_I386 ${CMAKE_CURRENT_BINARY_DIR}/libqemu/i386-lib/libqemu-i386.so )
-
-INCLUDE_DIRECTORIES( ${CMAKE_CURRENT_SOURCE_DIR}/include )
+INCLUDE_DIRECTORIES( ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/libqemu/include )
 
 SET( SOURCE_FILES
     "src/plugin_main.cpp"
-    "src/ida_util.cpp" )
+    "src/ida_util.cpp"
+    "src/libqemu.cpp" )
 
 ADD_LIBRARY( ida-llvm MODULE ${SOURCE_FILES} )
 SET_TARGET_PROPERTIES( 
@@ -56,8 +59,14 @@ SET_TARGET_PROPERTIES(
     SUFFIX "${IDA_PLUGIN_SUFFIX}"
     OUTPUT_NAME ida-llvm )
 ADD_DEPENDENCIES( ida-llvm libqemu )
-TARGET_LINK_LIBRARIES( ida-llvm ${IDA_LIBRARIES} ) 
+TARGET_LINK_LIBRARIES( ida-llvm ${IDA_LIBRARIES} Qt4::QtCore ) 
 
 INSTALL( 
     TARGETS ida-llvm
+    DESTINATION "${IDA_DIRECTORY}/plugins" )
+
+INSTALL(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/libqemu/arm-lib/libqemu-arm.so"
+          "${CMAKE_CURRENT_BINARY_DIR}/libqemu/i386-lib/libqemu-i386.so"
+          "${CMAKE_CURRENT_BINARY_DIR}/libqemu/x86_64-lib/libqemu-x86_64.so"
     DESTINATION "${IDA_DIRECTORY}/plugins" )

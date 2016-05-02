@@ -30,3 +30,28 @@ ProcessorInformation ida_get_processor_information(void)
 
     return processor_info;
 }
+
+std::pair<ea_t, ea_t> ida_get_basic_block(ea_t ea)
+{
+    ea_t bb_start = ea;
+    ea_t bb_end = ea;
+
+    //First get BB start
+    while (true) {
+        ea_t prev_ea = get_first_cref_to(bb_start);
+        if ((prev_ea == BADADDR) || (get_next_cref_to(bb_start, prev_ea) != BADADDR)) {
+            break;
+        }
+        bb_start = prev_ea;
+    }
+
+    while (true) {
+        ea_t next_ea = get_first_cref_from(bb_end);
+        if ((next_ea == BADADDR) || (get_next_cref_from(bb_end, next_ea) != BADADDR)) {
+            break;
+        }
+        bb_end = next_ea;
+    }
+
+    return std::make_pair(bb_start, bb_end);
+}

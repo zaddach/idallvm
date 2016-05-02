@@ -18,7 +18,9 @@
 #include "idallvm/msg.h"
 #include "idallvm/string.h"
 #include "idallvm/ida_util.h"
+#include "idallvm/libqemu.h"
 
+extern plugin_t PLUGIN;
 //--------------------------------------------------------------------------
 static qstrvec_t graph_text;
 
@@ -317,7 +319,10 @@ bool idaapi menu_callback(void *ud)
 //--------------------------------------------------------------------------
 int idaapi PLUGIN_init(void)
 {
+    const char* so_name = NULL;
     ProcessorInformation processor_info = ida_get_processor_information();
+
+    int err = libqemu_load(processor_info.processor);
   
     return ida_is_graphical_mode() ? PLUGIN_KEEP : PLUGIN_SKIP;
 }
@@ -330,7 +335,11 @@ void idaapi PLUGIN_term(void)
 //--------------------------------------------------------------------------
 void idaapi PLUGIN_run(int /*arg*/)
 {
-  HWND hwnd = NULL;
+    ea_t screen_ea = get_screen_ea();
+    std::pair<ea_t, ea_t> bb = ida_get_basic_block(screen_ea);
+
+    msg("Basic block: <0x%08x, 0x%08x>\n", bb.first, bb.second);
+/*  HWND hwnd = NULL;
   TForm *form = create_tform("Sample graph", &hwnd);
   if ( hwnd != NULL )
   {
@@ -349,6 +358,7 @@ void idaapi PLUGIN_run(int /*arg*/)
   {
     close_tform(form, 0);
   }
+  */
 }
 
 //--------------------------------------------------------------------------
