@@ -37,7 +37,7 @@ ExternalProject_Add( libqemu
         SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libqemu
         CONFIGURE_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/libqemu/configure --enable-lib --target-list=arm-lib,i386-lib,x86_64-lib 
             --prefix=${CMAKE_CURRENT_BINARY_DIR}/libqemu --cxx=clang++-3.5 --clang=clang-3.5 --with-llvm-config=${LLVM_CONFIG}  
-            --extra-cflags=-m32 --extra-cxxflags=-m32 ${QEMU_DEBUG}
+            --enable-llvm-shared ${QEMU_DEBUG}
         BUILD_COMMAND $(MAKE)
         BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/libqemu
         INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/libqemu
@@ -59,7 +59,7 @@ SET_TARGET_PROPERTIES(
     SUFFIX "${IDA_PLUGIN_SUFFIX}"
     OUTPUT_NAME ida-llvm )
 ADD_DEPENDENCIES( ida-llvm libqemu )
-TARGET_LINK_LIBRARIES( ida-llvm ${IDA_LIBRARIES} Qt4::QtCore ) 
+TARGET_LINK_LIBRARIES( ida-llvm ${IDA_LIBRARIES} Qt4::QtCore ${LLVM_LIBRARIES} ) 
 
 INSTALL( 
     TARGETS ida-llvm

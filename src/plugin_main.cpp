@@ -1,11 +1,20 @@
-/*
- *  This is a sample plugin module.
- *  It demonstrates how to create a graph viewer with an aribtrary graph.
+/**
+ *  (c) 2016 Jonas Zaddach <jonas.zaddach@gmail.com>
  *
- *  It can be compiled by the following compilers:
+ *  This file is part of IDA-LLVM.
+ * 
+ *  IDA-LLVM is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
  *
- *      - Borland C++, CBuilder, free C++
+ *  Foobar is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
  *
+ *  You should have received a copy of the GNU General Public License
+ *  along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <ida.hpp>
@@ -13,6 +22,9 @@
 #include <graph.hpp>
 #include <loader.hpp>
 #include <kernwin.hpp>
+
+#include <llvm/IR/Function.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include "idallvm/plugin.h"
 #include "idallvm/msg.h"
@@ -316,6 +328,27 @@ bool idaapi menu_callback(void *ud)
   return true;
 }
 
+static uint64_t ida_load_code(void *env, uint64_t ptr, uint32_t memop, uint32_t idx)
+{
+    if (!getFlags(ptr)) {
+        ida_libqemu_raise_error(env, 0xdeadbeef);
+    }
+
+    switch(memop & LQ_MO_SIZE)
+    {
+        case LQ_MO_8:
+            return get_byte(ptr);
+        case LQ_MO_16:
+            return get_word(ptr);
+        case LQ_MO_32:
+            return get_long(ptr);
+        case LQ_MO_64:
+            return get_qword(ptr);
+    }
+
+    assert(false && "Should not arrive here");
+}
+
 //--------------------------------------------------------------------------
 int idaapi PLUGIN_init(void)
 {
@@ -323,6 +356,8 @@ int idaapi PLUGIN_init(void)
     ProcessorInformation processor_info = ida_get_processor_information();
 
     int err = libqemu_load(processor_info.processor);
+
+    ida_libqemu_init(ida_load_code, NULL);
   
     return ida_is_graphical_mode() ? PLUGIN_KEEP : PLUGIN_SKIP;
 }
@@ -337,8 +372,20 @@ void idaapi PLUGIN_run(int /*arg*/)
 {
     ea_t screen_ea = get_screen_ea();
     std::pair<ea_t, ea_t> bb = ida_get_basic_block(screen_ea);
+    LLVMValueRef llvm_function;
+    CodeFlags codeFlags = {0};
 
     msg("Basic block: <0x%08x, 0x%08x>\n", bb.first, bb.second);
+    ida_libqemu_gen_intermediate_code(bb.first, codeFlags, false, &llvm_function);
+
+    llvm::Function* function = llvm::cast<llvm::Function>(llvm::unwrap(llvm_function));
+    std::string insts_text;
+    llvm::raw_string_ostream ss(insts_text);
+
+    ss << *function;
+    msg("LLVM: %s\n", ss.str().c_str());
+
+    
 /*  HWND hwnd = NULL;
   TForm *form = create_tform("Sample graph", &hwnd);
   if ( hwnd != NULL )
