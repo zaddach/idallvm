@@ -31,10 +31,12 @@
 #include "idallvm/string.h"
 #include "idallvm/ida_util.h"
 #include "idallvm/libqemu.h"
+#include "idallvm/plugin_python.h"
 
 extern plugin_t PLUGIN;
 //--------------------------------------------------------------------------
 static qstrvec_t graph_text;
+static ProcessorInformation processor_info;
 
 //--------------------------------------------------------------------------
 static const char *get_node_name(int n)
@@ -353,11 +355,12 @@ static uint64_t ida_load_code(void *env, uint64_t ptr, uint32_t memop, uint32_t 
 int idaapi PLUGIN_init(void)
 {
     const char* so_name = NULL;
-    ProcessorInformation processor_info = ida_get_processor_information();
+    processor_info = ida_get_processor_information();
 
     int err = libqemu_load(processor_info.processor);
 
     ida_libqemu_init(ida_load_code, NULL);
+    plugin_init_python();
   
     return ida_is_graphical_mode() ? PLUGIN_KEEP : PLUGIN_SKIP;
 }
@@ -365,6 +368,8 @@ int idaapi PLUGIN_init(void)
 //--------------------------------------------------------------------------
 void idaapi PLUGIN_term(void)
 {
+    plugin_unload_python();
+    libqemu_unload();
 }
 
 //--------------------------------------------------------------------------
@@ -373,10 +378,18 @@ void idaapi PLUGIN_run(int /*arg*/)
     ea_t screen_ea = get_screen_ea();
     std::pair<ea_t, ea_t> bb = ida_get_basic_block(screen_ea);
     LLVMValueRef llvm_function;
-    CodeFlags codeFlags = {0};
+    CodeFlags code_flags = {0};
+
+    switch (processor_info.processor) {
+        case PROCESSOR_ARM:
+            code_flags.arm.thumb = ida_arm_is_thumb_code(bb.first);
+            break;
+        default:
+            MSG_WARN("Don't know how to set code flags for this processor.");
+    }
 
     msg("Basic block: <0x%08x, 0x%08x>\n", bb.first, bb.second);
-    ida_libqemu_gen_intermediate_code(bb.first, codeFlags, false, &llvm_function);
+    ida_libqemu_gen_intermediate_code(bb.first, code_flags, false, &llvm_function);
 
     llvm::Function* function = llvm::cast<llvm::Function>(llvm::unwrap(llvm_function));
     std::string insts_text;
@@ -385,27 +398,27 @@ void idaapi PLUGIN_run(int /*arg*/)
     ss << *function;
     msg("LLVM: %s\n", ss.str().c_str());
 
-    
-/*  HWND hwnd = NULL;
-  TForm *form = create_tform("Sample graph", &hwnd);
-  if ( hwnd != NULL )
-  {
-    // get a unique graph id
-    netnode id;
-    id.create("$ ugraph sample");
-    graph_viewer_t *gv = create_graph_viewer(form,  id, callback, NULL, 0);
-    open_tform(form, FORM_TAB|FORM_MENU|FORM_QWIDGET);
-    if ( gv != NULL )
+/*   
+    HWND hwnd = NULL;
+    TForm *form = create_tform("LLVM", &hwnd);
+    if ( hwnd != NULL )
     {
-      viewer_fit_window(gv);
-      viewer_add_menu_item(gv, "User function", menu_callback, gv, NULL, 0);
+        // get a unique graph id
+        netnode id;
+        id.create("$ ugraph sample");
+        graph_viewer_t *gv = create_graph_viewer(form,  id, callback, NULL, 0);
+        open_tform(form, FORM_TAB|FORM_MENU|FORM_QWIDGET);
+        if ( gv != NULL )
+        {
+            viewer_fit_window(gv);
+//            viewer_add_menu_item(gv, "User function", menu_callback, gv, NULL, 0);
+        }
     }
-  }
-  else
-  {
-    close_tform(form, 0);
-  }
-  */
+    else
+    {
+        close_tform(form, 0);
+    }
+*/
 }
 
 //--------------------------------------------------------------------------

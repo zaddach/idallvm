@@ -1,6 +1,7 @@
 #include <ida.hpp>
 #include <idp.hpp>
 #include <kernwin.hpp>
+#include <srarea.hpp>
 
 #include "idallvm/ida_util.h"
 #include "idallvm/msg.h"
@@ -10,6 +11,24 @@ bool ida_is_graphical_mode(void)
 {
     return callui(ui_get_hwnd).vptr != NULL || is_idaq();
 }
+
+static int ida_arm_get_t_register_num(void)
+{
+    static int regnum = -1;
+
+    if (regnum == -1) {
+        regnum = str2reg("T");
+    }
+
+    return regnum;
+}
+
+bool ida_arm_is_thumb_code(ea_t ea)
+{
+    return get_segreg(ea, ida_arm_get_t_register_num());
+}
+
+
 
 ProcessorInformation ida_get_processor_information(void)
 {

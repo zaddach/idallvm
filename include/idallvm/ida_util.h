@@ -57,4 +57,9 @@ ProcessorInformation ida_get_processor_information(void);
  */ 
 std::pair<ea_t, ea_t> ida_get_basic_block(ea_t ea);
 
+/**
+ * Check if the instruction at @ea is an ARM thumb instruction.
+ */
+bool ida_arm_is_thumb_code(ea_t ea);
+
 #endif /* _IDALLVM_IDAUTIL_H */
