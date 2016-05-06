@@ -312,6 +312,31 @@ static int idaapi callback(void *, int code, va_list va)
   return result;
 }
 
+static int idaapi on_ui_notification(void *, int code, va_list va)
+{
+    switch ( code )
+    {
+        case ui_ready_to_run:
+            break;
+        case ui_database_inited:
+            break;
+        case ui_term:
+            break;
+        case ui_plugin_loaded: {
+            plugin_info_t* plugin_info = va_arg(va, plugin_info_t*);
+            if (plugin_info && strcmp(plugin_info->name, "IDAPython") == 0) {
+                plugin_init_python();
+            }
+            break;
+        }
+    case ui_plugin_unloading:
+      break;
+    default:
+      break;
+  }
+  return 0;
+}
+
 //--------------------------------------------------------------------------
 bool idaapi menu_callback(void *ud)
 {
@@ -360,7 +385,15 @@ int idaapi PLUGIN_init(void)
     int err = libqemu_load(processor_info.processor);
 
     ida_libqemu_init(ida_load_code, NULL);
-    plugin_init_python();
+
+    //If python plugin is already loaded, run python initialization, otherwise hook
+    //plugin initializations and run it when plugin is loaded.
+    for (plugin_info_t* plugin_info = get_plugins(); plugin_info; plugin_info = plugin_info->next) {
+        if (strcmp(plugin_info->name, "IDAPython") == 0) {
+            plugin_init_python();
+        }
+    }
+    hook_to_notification_point(HT_UI, on_ui_notification, NULL);
   
     return ida_is_graphical_mode() ? PLUGIN_KEEP : PLUGIN_SKIP;
 }

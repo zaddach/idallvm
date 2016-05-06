@@ -76,3 +76,15 @@ int libqemu_load(Processor processor)
     }
 }
 
+void libqemu_unload(void)
+{
+    if (lib) {
+        lib->unload();
+        lib = NULL;
+    }
+
+    ida_libqemu_init = NULL;
+    ida_libqemu_raise_error = NULL;
+    ida_libqemu_gen_intermediate_code = NULL;
+}
+

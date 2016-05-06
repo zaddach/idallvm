@@ -19,6 +19,7 @@ extern libqemu_raise_error_fn ida_libqemu_raise_error;
 extern libqemu_gen_intermediate_code_fn ida_libqemu_gen_intermediate_code;
 
 int libqemu_load(Processor processor);
+void libqemu_unload(void);
 
 #endif /* _IDALLVM_LIBQEMU_H */
 
