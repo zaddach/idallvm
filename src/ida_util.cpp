@@ -56,17 +56,23 @@ std::pair<ea_t, ea_t> ida_get_basic_block(ea_t ea)
     ea_t bb_end = ea;
 
     //First get BB start
-    while (true) {
+    while (get_first_fcref_to(bb_start) == BADADDR) {
         ea_t prev_ea = get_first_cref_to(bb_start);
         if ((prev_ea == BADADDR) || (get_next_cref_to(bb_start, prev_ea) != BADADDR)) {
+            break;
+        }
+        if (get_first_fcref_from(prev_ea) != BADADDR) {
             break;
         }
         bb_start = prev_ea;
     }
 
-    while (true) {
+    while (get_first_fcref_from(bb_end) == BADADDR) {
         ea_t next_ea = get_first_cref_from(bb_end);
         if ((next_ea == BADADDR) || (get_next_cref_from(bb_end, next_ea) != BADADDR)) {
+            break;
+        }
+        if (get_first_fcref_to(next_ea) != BADADDR) {
             break;
         }
         bb_end = next_ea;
