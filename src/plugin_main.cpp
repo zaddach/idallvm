@@ -8,13 +8,13 @@
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
  *
- *  Foobar is distributed in the hope that it will be useful,
+ *  IDA-LLVM is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *  GNU General Public License for more details.
  *
  *  You should have received a copy of the GNU General Public License
- *  along with Foobar.  If not, see <http://www.gnu.org/licenses/>.
+ *  along with IDA-LLVM.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <ida.hpp>
@@ -32,6 +32,7 @@
 #include "idallvm/ida_util.h"
 #include "idallvm/libqemu.h"
 #include "idallvm/plugin_python.h"
+#include "idallvm/llvm_passes.h"
 
 extern plugin_t PLUGIN;
 //--------------------------------------------------------------------------
@@ -409,22 +410,7 @@ void idaapi PLUGIN_term(void)
 void idaapi PLUGIN_run(int /*arg*/)
 {
     ea_t screen_ea = get_screen_ea();
-    std::pair<ea_t, ea_t> bb = ida_get_basic_block(screen_ea);
-    LLVMValueRef llvm_function;
-    CodeFlags code_flags = {0};
-
-    switch (processor_info.processor) {
-        case PROCESSOR_ARM:
-            code_flags.arm.thumb = ida_arm_is_thumb_code(bb.first);
-            break;
-        default:
-            MSG_WARN("Don't know how to set code flags for this processor.");
-    }
-
-    msg("Basic block: <0x%08x, 0x%08x>\n", bb.first, bb.second);
-    ida_libqemu_gen_intermediate_code(bb.first, code_flags, false, &llvm_function);
-
-    llvm::Function* function = llvm::cast<llvm::Function>(llvm::unwrap(llvm_function));
+    llvm::Function* function = translate_function_to_llvm(get_screen_ea());
     std::string insts_text;
     llvm::raw_string_ostream ss(insts_text);
 

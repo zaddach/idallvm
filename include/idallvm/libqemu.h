@@ -5,6 +5,8 @@
 
 #include "libqemu/qemu-lib-external.h"
 
+#include <llvm/IR/Type.h>
+
 #define SO_PREFIX "lib"
 #define SO_SUFFIX ".so"
 
@@ -17,6 +19,11 @@
 extern libqemu_init_fn ida_libqemu_init;
 extern libqemu_raise_error_fn ida_libqemu_raise_error;
 extern libqemu_gen_intermediate_code_fn ida_libqemu_gen_intermediate_code;
+extern libqemu_get_module_fn ida_libqemu_get_module;
+extern libqemu_get_target_name_fn ida_libqemu_get_target_name;
+
+llvm::Type* ida_libqemu_get_cpustruct_type(void);
+std::vector<unsigned>& ida_libqemu_get_pc_indices(void);
 
 int libqemu_load(Processor processor);
 void libqemu_unload(void);
