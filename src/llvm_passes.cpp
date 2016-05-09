@@ -8,6 +8,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -114,7 +116,153 @@ static std::vector<llvm::Value*>& get_pc_indices(llvm::LLVMContext& ctx)
     return indices;
 }
 
-llvm::Function* translate_function_to_llvm(ea_t ea)
+static bool restoreCallInst(llvm::Function& f, ea_t ea)
+{
+    //TODO: implement
+    return true;
+}
+
+static bool CpuStructToReg(llvm::Function& f)
+{
+    for (llvm::BasicBlock& bb : f) {
+        std::list<llvm::Instruction*> eraseList;
+        std::map< uint64_t, llvm::Value* > curValues;
+        std::map< uint64_t, llvm::StoreInst* > latestStore;
+
+        for (llvm::Instruction& inst : bb) {
+            switch (inst.getOpcode()) {
+                case llvm::Instruction::Call: {
+                    if (inst.getMetadata("idallvm.asm_call")) {
+                        latestStore.clear();
+                        curValues.clear();
+                    }
+                    break;
+                }
+                case llvm::Instruction::Load: {
+                    llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
+                    llvm::ConstantInt * ci = llvm::dyn_cast_or_null<llvm::ConstantInt>(md ? md->getOperand(0) : NULL);
+                    if (!ci) {
+                        break;
+                    }
+                    uint64_t offset = ci->getZExtValue();
+                    std::map< uint64_t, llvm::Value* >::iterator prevValue = curValues.find(offset);
+                    if (prevValue == curValues.end()) {
+                        curValues.insert(std::make_pair(offset, &inst));
+                    }
+                    else {
+                        inst.replaceAllUsesWith(prevValue->second);
+                        eraseList.push_back(&inst);
+                    }
+
+                    break;
+                }
+                case llvm::Instruction::Store: {
+                    llvm::StoreInst* store = llvm::cast<llvm::StoreInst>(&inst);
+                    llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
+                    llvm::ConstantInt * ci = llvm::dyn_cast_or_null<llvm::ConstantInt>(md ? md->getOperand(0) : NULL);
+                    if (!ci) {
+                        break;
+                    }
+                    uint64_t offset = ci->getZExtValue();
+                    curValues[offset] = store->getValueOperand();
+                    auto lastStore = latestStore.find(offset);
+                    if (lastStore != latestStore.end()) {
+                        eraseList.push_back(lastStore->second);
+                    }
+                    latestStore[offset] = store;
+                    break;
+                }
+            }
+        }
+
+        for (llvm::Instruction* inst : eraseList) {
+            inst->eraseFromParent();
+        }
+
+    }
+
+    std::map< llvm::BasicBlock*, std::map< uint64_t, llvm::LoadInst* > > incomingValues;
+    std::map< llvm::BasicBlock*, std::map< uint64_t, llvm::StoreInst* > > outgoingValues;
+
+    for (llvm::BasicBlock& bb : f) {
+        std::map< uint64_t, llvm::LoadInst* >& curIncomingValues = incomingValues[&bb];
+        std::map< uint64_t, llvm::StoreInst* >& curOutgoingValues = outgoingValues[&bb];
+
+        for (llvm::Instruction& inst : bb) {
+            bool breakLoop = false;
+            switch (inst.getOpcode()) {
+                case llvm::Instruction::Call: 
+                    if (inst.getMetadata("idallvm.asm_call")) {
+                        breakLoop = true;
+                        break;
+                    }
+                case llvm::Instruction::Load: {
+                    llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
+                    llvm::ConstantInt * ci = llvm::dyn_cast_or_null<llvm::ConstantInt>(md ? md->getOperand(0) : NULL);
+                    if (!ci) {
+                        break;
+                    }
+                    uint64_t offset = ci->getZExtValue();
+                    if (curIncomingValues.find(offset) == curIncomingValues.end()) {
+                        curIncomingValues.insert(std::make_pair(offset, llvm::cast<llvm::LoadInst>(&inst)));
+                    }
+                    break;
+                }
+            }
+            if (breakLoop) {
+                break;
+            }
+        }
+
+        for (llvm::Instruction& inst : bb) {
+            switch (inst.getOpcode()) {
+                case llvm::Instruction::Call: 
+                    if (inst.getMetadata("idallvm.asm_call")) {
+                        curOutgoingValues.clear();
+                        break;
+                    }
+                case llvm::Instruction::Store: {
+                    llvm::StoreInst* store = llvm::cast<llvm::StoreInst>(&inst);
+                    llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
+                    llvm::ConstantInt * ci = llvm::dyn_cast_or_null<llvm::ConstantInt>(md ? md->getOperand(0) : NULL);
+                    if (!ci) {
+                        break;
+                    }
+                    uint64_t offset = ci->getZExtValue();
+                    curOutgoingValues[offset] = store;
+                    break;
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
+static bool inlineInstructionCalls(llvm::Function& f)
+{
+    std::list<llvm::CallInst*> instructionsToInline;
+
+    for (llvm::BasicBlock& bb : f) {
+        for (llvm::Instruction& inst : bb) {
+            if (llvm::CallInst* callInst = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+                instructionsToInline.push_back(callInst);
+            }
+        }
+    }
+
+    for (llvm::CallInst* callInst : instructionsToInline) {
+        llvm::errs() << *callInst << '\n';
+        llvm::InlineFunctionInfo inlineFunctionInfo;
+        llvm::InlineFunction(callInst, inlineFunctionInfo);
+    }
+    verifyFunction(f, &llvm::errs());
+
+    return true;
+}
+
+
+static llvm::Function* generateOpcodeCallsFromIda(ea_t ea)
 {
     static std::map<ea_t, llvm::Function*> translationCache;
     ea = get_function_entry_point(ea);
@@ -143,6 +291,7 @@ llvm::Function* translate_function_to_llvm(ea_t ea)
     blocksTodo.push_back(new TranslateBasicBlock(function, ea));
     basicBlocks.insert(std::make_pair(ea, blocksTodo.front()));
     llvm::BasicBlock* unknownJumpTargetSink = llvm::BasicBlock::Create(function->getContext(), "unknownJumpTargetSink", function);
+    llvm::ReturnInst::Create(function->getContext(), unknownJumpTargetSink);
     while (!blocksTodo.empty()) {
         TranslateBasicBlock* bb = blocksTodo.front();
         blocksTodo.pop_front();
@@ -153,21 +302,18 @@ llvm::Function* translate_function_to_llvm(ea_t ea)
             llvm::Function* instFunction = translate_single_instruction(cur_ea);
             assert(instFunction && "LLVM function for assembler instruction should not be NULL");
 
+            
+            restoreCallInst(*instFunction, cur_ea);
+
             args.push_back(function->arg_begin());
             llvm::CallInst::Create(instFunction, args, "", bb->llvmBasicBlock);
-
-            llvm::errs() << *bb->llvmBasicBlock << '\n';
-            ;
         }
 
         //Generate case statement at end of basic block jumping to successors
         const int num_successors = get_num_crefs_from(bb->endAddress);
         llvm::GetElementPtrInst* gepInst = llvm::GetElementPtrInst::CreateInBounds(function->arg_begin(), get_pc_indices(function->getContext()), "ptr_PC", bb->llvmBasicBlock);
-        llvm::errs() << *gepInst << '\n';
         llvm::LoadInst* loadInst = new llvm::LoadInst(gepInst, "PC", bb->llvmBasicBlock);
-        llvm::errs() << *loadInst << '\n';
         llvm::SwitchInst* switchInst = llvm::SwitchInst::Create(loadInst, unknownJumpTargetSink, num_successors, bb->llvmBasicBlock);
-        llvm::errs() << *switchInst << '\n';
 
         for (ea_t next_ea = get_first_cref_from(bb->endAddress); next_ea != BADADDR; next_ea = get_next_cref_from(bb->endAddress, next_ea)) {
 
@@ -178,15 +324,23 @@ llvm::Function* translate_function_to_llvm(ea_t ea)
             }
             TranslateBasicBlock* next_bb = basicBlocks.find(next_ea)->second;
 
-            llvm::errs() << "Switch case type: " << *loadInst->getType() << ", next_bb: " << next_bb->llvmBasicBlock->getName() << '\n';
             switchInst->addCase(llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(loadInst->getType()), next_ea), next_bb->llvmBasicBlock);
             bb->successors.push_back(next_bb);
             next_bb->predecessors.push_back(bb); 
         }
-        llvm::errs() << *switchInst << '\n';
+
 
         bb->completed = true;
     }
 
+    verifyFunction(*function, &llvm::errs());
     return function;
+}
+
+llvm::Function* translate_function_to_llvm(ea_t ea) 
+{
+    llvm::Function* function = generateOpcodeCallsFromIda(ea);
+    if (function) {
+        inlineInstructionCalls(*function);
+    }
 }
