@@ -240,6 +240,29 @@ static bool CpuStructToReg(llvm::Function& f)
     return true;
 }
 
+static bool restoreCallInstructions(llvm::Function& f)
+{
+    for (llvm::BasicBlock& bb : f) {
+        for (llvm::Instruction& inst : bb) {
+            if (llvm::CallInst* call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
+                if (call->getCalledFunction() 
+                    && call->getCalledFunction()->hasName() 
+                    && (call->getCalledFunction()->getName() == "tcg-llvm.opcode_start")) 
+                {
+                    llvm::MDNode* md = call->getMetadata("tcg-llvm.pc");
+                    assert(md && "PC metadata missing");
+                    llvm::ConstantInt* pcCi = llvm::dyn_cast<llvm::ConstantInt>(md->getOperand(0));
+                    assert(pcCi && "PC cannot be converted to ConstantInt");
+                    uint64_t pc = pcCi->getZExtValue();
+
+                }
+            }
+        }
+    }
+
+    return true;
+}
+
 static bool inlineInstructionCalls(llvm::Function& f)
 {
     std::list<llvm::CallInst*> instructionsToInline;

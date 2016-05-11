@@ -411,11 +411,13 @@ void idaapi PLUGIN_run(int /*arg*/)
 {
     ea_t screen_ea = get_screen_ea();
     llvm::Function* function = translate_function_to_llvm(get_screen_ea());
-    std::string insts_text;
-    llvm::raw_string_ostream ss(insts_text);
+    if (function) {
+        std::string insts_text;
+        llvm::raw_string_ostream ss(insts_text);
 
-    ss << *function;
-    msg("LLVM: %s\n", ss.str().c_str());
+        ss << *function;
+        msg("LLVM: %s\n", ss.str().c_str());
+    }
 
 /*   
     HWND hwnd = NULL;
