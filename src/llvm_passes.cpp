@@ -23,6 +23,9 @@
 #include "idallvm/msg.h"
 #include "idallvm/libqemu.h"
 #include "idallvm/llvm_passes.h"
+#include "idallvm/IdaBasicBlock.h"
+#include "idallvm/IdaFlowChart.h"
+#include "idallvm/IdaInstruction.h"
 
 struct TranslateBasicBlock;
 
@@ -30,21 +33,16 @@ struct TranslateBasicBlock
 {
     bool completed;
     llvm::BasicBlock* llvmBasicBlock;
-    uint64_t startAddress;
-    uint64_t endAddress; //< Address of last instruction belonging to the BB
+    IdaBasicBlock& idaBasicBlock;
     std::list<TranslateBasicBlock*> successors;
     std::list<TranslateBasicBlock*> predecessors;
 
 public:
-    TranslateBasicBlock(llvm::Function* function, ea_t start) 
+    TranslateBasicBlock(llvm::Function* function, IdaBasicBlock& bb) 
             : completed(false),
-              startAddress(start) {
+              idaBasicBlock(bb) {
         std::stringstream ss;
-        std::pair<ea_t, ea_t> bb = ida_get_basic_block(start);
-        msg("start = 0x%08x, bb.first = 0x%08x\n", start, bb.first);
-        assert(bb.first == start);
-        endAddress = bb.second;
-        ss << "0x" << std::setfill('0') << std::setw(8) << std::hex << start; 
+        ss << "0x" << std::setfill('0') << std::setw(8) << std::hex << bb.getStartAddress(); 
         llvmBasicBlock = llvm::BasicBlock::Create(function->getContext(), ss.str(), function);
     }
 };
@@ -115,6 +113,7 @@ static std::vector<llvm::Value*>& get_pc_indices(llvm::LLVMContext& ctx)
 
     return indices;
 }
+
 
 static bool restoreCallInst(llvm::Function& f, ea_t ea)
 {
@@ -236,6 +235,8 @@ static bool CpuStructToReg(llvm::Function& f)
         }
     }
 
+    //TODO: Propagate values between basic blocks in flow direction
+
     return true;
 }
 
@@ -262,34 +263,28 @@ static bool inlineInstructionCalls(llvm::Function& f)
 }
 
 
-static llvm::Function* generateOpcodeCallsFromIda(ea_t ea)
+static llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart)
 {
     static std::map<ea_t, llvm::Function*> translationCache;
-    ea = get_function_entry_point(ea);
 
-    if (ea == BADADDR) {
-        return NULL;
-    }
-
-    if (translationCache.find(ea) != translationCache.end()) {
-        return translationCache.find(ea)->second;
+    auto translationCacheItr = translationCache.find(flowChart.getEntryBlock().getStartAddress());
+    if (translationCacheItr != translationCache.end()) {
+        return translationCacheItr->second;
     }
 
     //Create LLVM function
     llvm::Module* module = llvm::unwrap(ida_libqemu_get_module());
     llvm::Type* cpuStructPtrType = ida_libqemu_get_cpustruct_type();
-    qstring ida_function_name;
-    get_func_name2(&ida_function_name, ea);
     std::stringstream function_name;
-    function_name << "idallvm_tmp_" << ida_function_name.c_str() << "_0x" << std::hex << ea;
+    function_name << "idallvm_tmp_" << flowChart.getFunctionName() << "_0x" << std::hex << flowChart.getStartAddress();
     llvm::Function* function = llvm::cast<llvm::Function>(
         module->getOrInsertFunction(function_name.str(), llvm::Type::getVoidTy(module->getContext()), cpuStructPtrType, NULL));
 
     std::map<uint64_t, TranslateBasicBlock*> basicBlocks;
     std::list<TranslateBasicBlock*> blocksTodo;
 
-    blocksTodo.push_back(new TranslateBasicBlock(function, ea));
-    basicBlocks.insert(std::make_pair(ea, blocksTodo.front()));
+    blocksTodo.push_back(new TranslateBasicBlock(function, flowChart.getEntryBlock()));
+    basicBlocks.insert(std::make_pair(flowChart.getEntryBlock().getStartAddress(), blocksTodo.front()));
     llvm::BasicBlock* unknownJumpTargetSink = llvm::BasicBlock::Create(function->getContext(), "unknownJumpTargetSink", function);
     llvm::ReturnInst::Create(function->getContext(), unknownJumpTargetSink);
     while (!blocksTodo.empty()) {
@@ -297,36 +292,32 @@ static llvm::Function* generateOpcodeCallsFromIda(ea_t ea)
         blocksTodo.pop_front();
 
         //Translate all instructions inside the basic block and add calls to their functions
-        for (ea_t cur_ea = bb->startAddress; cur_ea != BADADDR; cur_ea = next_head(cur_ea, bb->endAddress + 1)) {
+        for (IdaInstruction& idaInst : bb->idaBasicBlock) {
             llvm::SmallVector<llvm::Value*, 1> args;
-            llvm::Function* instFunction = translate_single_instruction(cur_ea);
+            llvm::Function* instFunction = translate_single_instruction(idaInst.getAddress());
             assert(instFunction && "LLVM function for assembler instruction should not be NULL");
-
-            
-            restoreCallInst(*instFunction, cur_ea);
 
             args.push_back(function->arg_begin());
             llvm::CallInst::Create(instFunction, args, "", bb->llvmBasicBlock);
         }
 
         //Generate case statement at end of basic block jumping to successors
-        const int num_successors = get_num_crefs_from(bb->endAddress);
+        const int num_successors = bb->idaBasicBlock.getSuccessors().size();
         llvm::GetElementPtrInst* gepInst = llvm::GetElementPtrInst::CreateInBounds(function->arg_begin(), get_pc_indices(function->getContext()), "ptr_PC", bb->llvmBasicBlock);
         llvm::LoadInst* loadInst = new llvm::LoadInst(gepInst, "PC", bb->llvmBasicBlock);
         llvm::SwitchInst* switchInst = llvm::SwitchInst::Create(loadInst, unknownJumpTargetSink, num_successors, bb->llvmBasicBlock);
 
-        for (ea_t next_ea = get_first_cref_from(bb->endAddress); next_ea != BADADDR; next_ea = get_next_cref_from(bb->endAddress, next_ea)) {
-
-            if (basicBlocks.find(next_ea) == basicBlocks.end()) {
-                TranslateBasicBlock* next_bb = new TranslateBasicBlock(function, next_ea);
-                basicBlocks.insert(std::make_pair(next_ea, next_bb));
+        for (IdaBasicBlock& successor : bb->idaBasicBlock.getSuccessors()) {
+            auto bbItr = basicBlocks.find(successor.getStartAddress());
+            if (bbItr == basicBlocks.end()) {
+                TranslateBasicBlock* next_bb = new TranslateBasicBlock(function, successor);
+                bbItr = basicBlocks.insert(std::make_pair(successor.getStartAddress(), next_bb)).first;
                 blocksTodo.push_back(next_bb);
             }
-            TranslateBasicBlock* next_bb = basicBlocks.find(next_ea)->second;
 
-            switchInst->addCase(llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(loadInst->getType()), next_ea), next_bb->llvmBasicBlock);
-            bb->successors.push_back(next_bb);
-            next_bb->predecessors.push_back(bb); 
+            switchInst->addCase(llvm::ConstantInt::get(llvm::cast<llvm::IntegerType>(loadInst->getType()), bbItr->second->idaBasicBlock.getStartAddress()), bbItr->second->llvmBasicBlock);
+            bb->successors.push_back(bbItr->second);
+            bbItr->second->predecessors.push_back(bb); 
         }
 
 
@@ -339,8 +330,12 @@ static llvm::Function* generateOpcodeCallsFromIda(ea_t ea)
 
 llvm::Function* translate_function_to_llvm(ea_t ea) 
 {
-    llvm::Function* function = generateOpcodeCallsFromIda(ea);
+    IdaFlowChart flowChart(ea);
+    llvm::Function* function = generateOpcodeCallsFromIda(flowChart);
     if (function) {
         inlineInstructionCalls(*function);
     }
+//    llvm::Function* instFunction = translate_single_instruction(ea);
+//    llvm::errs() << *instFunction << '\n';
+    return function;
 }

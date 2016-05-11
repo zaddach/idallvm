@@ -61,7 +61,10 @@ SET( SOURCE_FILES
     "src/ida_util.cpp"
     "src/libqemu.cpp"
     "src/plugin_python.cpp"
-    "src/llvm_passes.cpp" )
+    "src/llvm_passes.cpp"
+    "src/IdaFlowChart.cpp"
+    "src/IdaBasicBlock.cpp" )
+
 
 ADD_LIBRARY( ida-llvm MODULE ${SOURCE_FILES} )
 SET_TARGET_PROPERTIES( 
