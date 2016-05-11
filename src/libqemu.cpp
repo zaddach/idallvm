@@ -7,13 +7,18 @@
 #include "idallvm/msg.h"
 #include "idallvm/libqemu.h"
 
-static QLibrary* lib = NULL;
+static QLibrary* lib = nullptr;
 
-libqemu_init_fn ida_libqemu_init = NULL;
-libqemu_raise_error_fn ida_libqemu_raise_error = NULL;
-libqemu_gen_intermediate_code_fn ida_libqemu_gen_intermediate_code = NULL;
-libqemu_get_module_fn ida_libqemu_get_module = NULL;
-libqemu_get_target_name_fn ida_libqemu_get_target_name = NULL;
+decltype(libqemu_init)* Libqemu_Init = nullptr;
+decltype(libqemu_raise_error)* Libqemu_RaiseError = nullptr;
+decltype(libqemu_gen_intermediate_code)* Libqemu_GenIntermediateCode = nullptr;
+decltype(libqemu_get_module)* Libqemu_GetModule = nullptr;
+decltype(libqemu_get_target_name)* Libqemu_GetTargetName = nullptr;
+decltype(libqemu_get_register_info_by_name)* Libqemu_GetRegisterInfoByName = nullptr;
+decltype(libqemu_get_register_info_by_offset)* Libqemu_GetRegisterInfoByOffset = nullptr;
+decltype(libqemu_get_register_info_by_indices)* Libqemu_GetRegisterInfoByIndices = nullptr;
+decltype(libqemu_get_register_info_pc)* Libqemu_GetRegisterInfoPc = nullptr;
+decltype(libqemu_get_register_info_sp)* Libqemu_GetRegisterInfoSp = nullptr;
 
 static int is_searched_plugin(const char* file, void* ud)
 {
@@ -36,9 +41,9 @@ static int get_plugin_dir(char* path, size_t path_size)
 }
 
 
-llvm::Type* ida_libqemu_get_cpustruct_type(void) 
+llvm::Type* Libqemu_GetCpustateType(void) 
 {
-    llvm::Module* module = llvm::unwrap(ida_libqemu_get_module());
+    llvm::Module* module = llvm::unwrap(Libqemu_GetModule());
     assert(module && "Cannot get libqemu LLVM module");
     llvm::GlobalVariable* cpu_type_anchor = module->getGlobalVariable("cpu_type_anchor", false);
     assert(cpu_type_anchor && "Cannot get cpu_type_anchor variable in LLVM module");
@@ -49,29 +54,7 @@ llvm::Type* ida_libqemu_get_cpustruct_type(void)
     return type;
 }
 
-std::vector<unsigned>& ida_libqemu_get_pc_indices(void)
-{
-    static std::vector<unsigned> indices;
-
-    if (indices.empty()) {
-        size_t size = 20;
-        unsigned tmp_indices[20];
-
-        libqemu_get_pc_indices_fn get_pc_indices = reinterpret_cast<libqemu_get_pc_indices_fn>(lib->resolve("libqemu_get_pc_indices"));
-        assert(get_pc_indices);
-        if (!get_pc_indices || get_pc_indices(tmp_indices, &size)) {
-            //TODO: Error
-        }
-        for (unsigned i = 0; i < size; ++i) {
-            indices.push_back(tmp_indices[i]);
-        }
-    }
-
-    return indices;
-}
-
-
-int libqemu_load(Processor processor)
+int Libqemu_Load(Processor processor)
 {
     const char* libname = NULL;
     char plugins_dir[256];
@@ -91,53 +74,45 @@ int libqemu_load(Processor processor)
         return -1;
     }
 
-    ida_libqemu_init = reinterpret_cast<libqemu_init_fn>(lib->resolve("libqemu_init"));
-    if (!ida_libqemu_init) {
-        MSG_ERROR("Cannot get function pointer for %s", "libqemu_init");
-        lib->unload();
-        return -1;
+#define LOAD_FUNCTION_POINTER(var, name) \
+    var = reinterpret_cast<decltype(var)>(lib->resolve(name)); \
+    if (!var) { \
+        MSG_ERROR("Cannot get function pointer for %s", name); \
+        lib->unload(); \
+        return -1; \
     }
 
-    ida_libqemu_gen_intermediate_code = reinterpret_cast<libqemu_gen_intermediate_code_fn>(lib->resolve("libqemu_gen_intermediate_code"));
-    if (!ida_libqemu_gen_intermediate_code) {
-        MSG_ERROR("Cannot get function pointer for %s", "libqemu_gen_intermediate_code");
-        lib->unload();
-        return -1;
-    }
+    LOAD_FUNCTION_POINTER(Libqemu_Init, "libqemu_init")
+    LOAD_FUNCTION_POINTER(Libqemu_GenIntermediateCode, "libqemu_gen_intermediate_code")
+    LOAD_FUNCTION_POINTER(Libqemu_RaiseError, "libqemu_raise_error")
+    LOAD_FUNCTION_POINTER(Libqemu_GetTargetName, "libqemu_get_target_name")
+    LOAD_FUNCTION_POINTER(Libqemu_GetModule, "libqemu_get_module")
+    LOAD_FUNCTION_POINTER(Libqemu_GetRegisterInfoByName, "libqemu_get_register_info_by_name");
+    LOAD_FUNCTION_POINTER(Libqemu_GetRegisterInfoByOffset, "libqemu_get_register_info_by_offset");
+    LOAD_FUNCTION_POINTER(Libqemu_GetRegisterInfoByIndices, "libqemu_get_register_info_by_indices");
+    LOAD_FUNCTION_POINTER(Libqemu_GetRegisterInfoPc, "libqemu_get_register_info_pc");
+    LOAD_FUNCTION_POINTER(Libqemu_GetRegisterInfoSp, "libqemu_get_register_info_sp");
 
-    ida_libqemu_raise_error = reinterpret_cast<libqemu_raise_error_fn>(lib->resolve("libqemu_raise_error"));
-    if (!ida_libqemu_raise_error) {
-        MSG_ERROR("Cannot get function pointer for %s", "libqemu_raise_error");
-        lib->unload();
-        return -1;
-    }
-
-    ida_libqemu_get_module = reinterpret_cast<libqemu_get_module_fn>(lib->resolve("libqemu_get_module"));
-    if (!ida_libqemu_get_module) {
-        MSG_ERROR("Cannot get function pointer for %s", "libqemu_get_module");
-        lib->unload();
-        return -1;
-    }
-
-    ida_libqemu_get_target_name = reinterpret_cast<libqemu_get_target_name_fn>(lib->resolve("libqemu_get_target_name"));
-    if (!ida_libqemu_get_target_name) {
-        MSG_ERROR("Cannot get function pointer for %s", "libqemu_get_target_name");
-        lib->unload();
-        return -1;
-    }
+#undef LOAD_FUNCTION_POINTER
+    return 0;
 }
 
-void libqemu_unload(void)
+void Libqemu_Unload(void)
 {
     if (lib) {
         lib->unload();
         lib = NULL;
     }
 
-    ida_libqemu_init = NULL;
-    ida_libqemu_raise_error = NULL;
-    ida_libqemu_gen_intermediate_code = NULL;
-    ida_libqemu_get_module = NULL;
-    ida_libqemu_get_target_name = NULL;
+    Libqemu_Init = nullptr;
+    Libqemu_RaiseError = nullptr;
+    Libqemu_GenIntermediateCode = nullptr;
+    Libqemu_GetTargetName = nullptr;
+    Libqemu_GetModule = nullptr;
+    Libqemu_GetRegisterInfoByName = nullptr;
+    Libqemu_GetRegisterInfoByOffset = nullptr;
+    Libqemu_GetRegisterInfoByIndices = nullptr;
+    Libqemu_GetRegisterInfoPc = nullptr;
+    Libqemu_GetRegisterInfoSp = nullptr;
 }
 

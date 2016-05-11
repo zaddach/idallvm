@@ -359,7 +359,7 @@ bool idaapi menu_callback(void *ud)
 static uint64_t ida_load_code(void *env, uint64_t ptr, uint32_t memop, uint32_t idx)
 {
     if (!getFlags(ptr)) {
-        ida_libqemu_raise_error(env, 0xdeadbeef);
+        Libqemu_RaiseError(env, 0xdeadbeef);
     }
 
     switch(memop & LQ_MO_SIZE)
@@ -383,9 +383,13 @@ int idaapi PLUGIN_init(void)
     const char* so_name = NULL;
     processor_info = ida_get_processor_information();
 
-    int err = libqemu_load(processor_info.processor);
+    int err = Libqemu_Load(processor_info.processor);
+    if (err || !Libqemu_Init) {
+        llvm::errs() << "Error initializing libqemu library" << '\n';
+        return PLUGIN_SKIP;
+    }
 
-    ida_libqemu_init(ida_load_code, NULL);
+    Libqemu_Init(ida_load_code, NULL);
 
     //If python plugin is already loaded, run python initialization, otherwise hook
     //plugin initializations and run it when plugin is loaded.
@@ -403,7 +407,7 @@ int idaapi PLUGIN_init(void)
 void idaapi PLUGIN_term(void)
 {
     plugin_unload_python();
-    libqemu_unload();
+    Libqemu_Unload();
 }
 
 //--------------------------------------------------------------------------

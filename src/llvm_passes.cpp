@@ -78,7 +78,7 @@ static llvm::Function* translate_single_instruction(ea_t ea)
             MSG_WARN("Don't know how to set code flags for this processor.");
     }
 
-    ida_libqemu_gen_intermediate_code(ea, code_flags, true, &llvm_function);
+    Libqemu_GenIntermediateCode(ea, code_flags, true, &llvm_function);
     return llvm::cast<llvm::Function>(llvm::unwrap(llvm_function));
 }
 
@@ -97,6 +97,7 @@ static int get_num_crefs_from(ea_t from)
     return num;
 }
 
+/*
 static std::vector<llvm::Value*>& get_pc_indices(llvm::LLVMContext& ctx) 
 {
     static std::vector<llvm::Value*> indices;
@@ -113,7 +114,7 @@ static std::vector<llvm::Value*>& get_pc_indices(llvm::LLVMContext& ctx)
 
     return indices;
 }
-
+*/
 
 static bool restoreCallInst(llvm::Function& f, ea_t ea)
 {
@@ -263,6 +264,31 @@ static bool restoreCallInstructions(llvm::Function& f)
     return true;
 }
 
+static bool identifyCallsArm(llvm::Function& f)
+{
+    for (llvm::BasicBlock& bb : f) {
+        for (llvm::Instruction& inst : bb) {
+            switch (inst.getOpcode()) {
+                case llvm::Instruction::Call: {
+                    llvm::CallInst* call = llvm::cast<llvm::CallInst>(&inst);
+                    if (!call->hasName() || (call->getName() != "tcg-llvm.opcode_start"))
+                        break;
+                    llvm::MDNode* md = call->getMetadata("tcg-llvm.pc");
+                    if (!md || (md->getNumOperands() <= 0)) 
+                        break;
+                    llvm::ConstantInt* ci = llvm::dyn_cast<llvm::ConstantInt>(md->getOperand(0));
+                    if (!ci) 
+                        break;
+                    uint64_t pc = ci->getZExtValue();
+
+                        
+                }
+            }
+        }
+    }
+    return true;
+}
+
 static bool inlineInstructionCalls(llvm::Function& f)
 {
     std::list<llvm::CallInst*> instructionsToInline;
@@ -285,6 +311,20 @@ static bool inlineInstructionCalls(llvm::Function& f)
     return true;
 }
 
+static std::vector<llvm::Value*>& getPcIndices(llvm::LLVMContext& ctx)
+{
+    static std::vector<llvm::Value*> indices;
+
+    if (indices.empty()) {
+        RegisterInfo const* ri = Libqemu_GetRegisterInfoPc();
+        for (size_t i = 0; i < ri->indices.count; ++i) {
+            indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), ri->indices.indices[i]));
+        }
+    }
+
+    return indices;
+}
+
 
 static llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart)
 {
@@ -296,8 +336,8 @@ static llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart)
     }
 
     //Create LLVM function
-    llvm::Module* module = llvm::unwrap(ida_libqemu_get_module());
-    llvm::Type* cpuStructPtrType = ida_libqemu_get_cpustruct_type();
+    llvm::Module* module = llvm::unwrap(Libqemu_GetModule());
+    llvm::Type* cpuStructPtrType = Libqemu_GetCpustateType();
     std::stringstream function_name;
     function_name << "idallvm_tmp_" << flowChart.getFunctionName() << "_0x" << std::hex << flowChart.getStartAddress();
     llvm::Function* function = llvm::cast<llvm::Function>(
@@ -326,7 +366,7 @@ static llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart)
 
         //Generate case statement at end of basic block jumping to successors
         const int num_successors = bb->idaBasicBlock.getSuccessors().size();
-        llvm::GetElementPtrInst* gepInst = llvm::GetElementPtrInst::CreateInBounds(function->arg_begin(), get_pc_indices(function->getContext()), "ptr_PC", bb->llvmBasicBlock);
+        llvm::GetElementPtrInst* gepInst = llvm::GetElementPtrInst::CreateInBounds(function->arg_begin(), getPcIndices(function->getContext()), "ptr_PC", bb->llvmBasicBlock);
         llvm::LoadInst* loadInst = new llvm::LoadInst(gepInst, "PC", bb->llvmBasicBlock);
         llvm::SwitchInst* switchInst = llvm::SwitchInst::Create(loadInst, unknownJumpTargetSink, num_successors, bb->llvmBasicBlock);
 
