@@ -266,7 +266,14 @@ static bool restoreCallInstructions(llvm::Function& f)
 
 static bool identifyCallsArm(llvm::Function& f)
 {
+    std::list<llvm::Instruction*> eraseList;
+
     for (llvm::BasicBlock& bb : f) {
+        llvm::ConstantInt* lastPcValue = nullptr;
+        llvm::ConstantInt* lastLrValue = nullptr;
+        llvm::StoreInst* lastPcStore = nullptr;
+        llvm::StoreInst* lastLrStore = nullptr;
+        bool firstInstructionInBB = true;
         for (llvm::Instruction& inst : bb) {
             switch (inst.getOpcode()) {
                 case llvm::Instruction::Call: {
@@ -274,17 +281,57 @@ static bool identifyCallsArm(llvm::Function& f)
                     if (!call->hasName() || (call->getName() != "tcg-llvm.opcode_start"))
                         break;
                     llvm::MDNode* md = call->getMetadata("tcg-llvm.pc");
-                    if (!md || (md->getNumOperands() <= 0)) 
-                        break;
+                    assert(md && "PC metadata needs to be present");
+                    assert(md->getNumOperands() > 0 && "Metadata needs to have at least one operand");
                     llvm::ConstantInt* ci = llvm::dyn_cast<llvm::ConstantInt>(md->getOperand(0));
-                    if (!ci) 
-                        break;
-                    uint64_t pc = ci->getZExtValue();
-
-                        
+                    assert(ci && "Instruction address needs to be set");
+                    if (!firstInstructionInBB && (!lastPcValue ||  (lastPcValue->getZExtValue() != ci->getZExtValue()))) {
+                        if (lastLrValue && (lastLrValue->getZExtValue() == ci->getZExtValue())) {
+                            //This is dead sure a call (well, if the called object is a proper function)
+                            llvm::SmallVector<llvm::Value*, 1> args;
+                            args.push_back(f.arg_begin());
+                            llvm::CallInst* asmCall = llvm::CallInst::Create(
+                                    lastPcStore->getValueOperand(),
+                                    args,
+                                    "",
+                                    lastPcStore);
+                            asmCall->setMetadata("idallvm.asm_call", llvm::MDNode::get(f.getContext(), std::vector<llvm::Value*>()));
+                            eraseList.push_back(lastPcStore);
+                            eraseList.push_back(lastLrStore);
+                        }
+                        else {
+                            //Not sure what this is: indirect jump?
+                            MSG_WARN("Found indirect jump before 0x%08" PRIx64 ": Does not have return address in LR", ci->getZExtValue());
+                        }
+                        //There was another control flow in between, this is a barrier for
+                        //value propagation
+                    }
+                    lastPcValue = nullptr;
+                    firstInstructionInBB = false;
+                    break;
+                }
+                case llvm::Instruction::Store: {
+                    llvm::StoreInst* store = llvm::cast<llvm::StoreInst>(&inst);
+                    llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.register_name");
+                    llvm::MDString* regName = (md && md->getNumOperands() > 0) ? llvm::dyn_cast<llvm::MDString>(md->getOperand(0)) : nullptr;
+                    if (regName) {
+                        if (regName->getString() == "pc") {
+                            lastPcValue = llvm::dyn_cast<llvm::ConstantInt>(store->getValueOperand());
+                            lastPcStore = store;
+                        }
+                        else if (regName->getString() == "lr") {
+                            lastLrValue = llvm::dyn_cast<llvm::ConstantInt>(store->getValueOperand());
+                            lastLrStore = store;
+                        }
+                    }
+                    break;
                 }
             }
         }
+    }
+
+    for (llvm::Instruction* inst : eraseList) {
+        inst->eraseFromParent();
     }
     return true;
 }
