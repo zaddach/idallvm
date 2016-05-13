@@ -6,10 +6,10 @@ IdaBasicBlock& IdaFlowChart::getBasicBlock(int id)
 {
     auto itr = bbCache.find(id);
     if (itr != bbCache.end()) {
-        return itr->second;
+        return *itr->second.get();
     }
     assert(id < size() && "Invalid index");
-    return bbCache.insert(std::make_pair(id, IdaBasicBlock(id, chart.blocks[id], *this))).first->second;
+    return *bbCache.insert(std::make_pair(id, std::unique_ptr<IdaBasicBlock>(new IdaBasicBlock(id, chart.blocks[id], *this)))).first->second.get();
 }
 
 std::string const& IdaFlowChart::getFunctionName(void)

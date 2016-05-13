@@ -2,6 +2,7 @@
 #define _IDALLVM_IDAFLOWCHART_H
 
 #include <map>
+#include <memory>
 
 #include <pro.h>
 #include <gdl.hpp>
@@ -16,7 +17,7 @@ class IdaFlowChart
     friend class IdaIinstruction;
 private:
     qflow_chart_t chart;
-    std::map<unsigned, IdaBasicBlock> bbCache;
+    std::map<unsigned, std::unique_ptr<IdaBasicBlock> > bbCache;
     std::string functionName;
 
 public:

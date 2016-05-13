@@ -336,6 +336,12 @@ static bool identifyCallsArm(llvm::Function& f)
     return true;
 }
 
+static bool identifyCalls(llvm::Function& f)
+{
+    //TODO: Care about other processor archs
+    return identifyCallsArm(f);
+}
+
 static bool inlineInstructionCalls(llvm::Function& f)
 {
     std::list<llvm::CallInst*> instructionsToInline;
@@ -364,6 +370,7 @@ static std::vector<llvm::Value*>& getPcIndices(llvm::LLVMContext& ctx)
 
     if (indices.empty()) {
         RegisterInfo const* ri = Libqemu_GetRegisterInfoPc();
+        indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 0)); //Initial 0 needed for GEP
         for (size_t i = 0; i < ri->indices.count; ++i) {
             indices.push_back(llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), ri->indices.indices[i]));
         }
@@ -443,7 +450,11 @@ llvm::Function* translate_function_to_llvm(ea_t ea)
     IdaFlowChart flowChart(ea);
     llvm::Function* function = generateOpcodeCallsFromIda(flowChart);
     if (function) {
+        llvm::errs() << "Function before inlining:\n" << *function << '\n';
         inlineInstructionCalls(*function);
+        llvm::errs() << "Function after inlining:\n" << *function << '\n';
+        identifyCalls(*function);
+        llvm::errs() << "Function after call identification:\n" << *function << '\n';
     }
 //    llvm::Function* instFunction = translate_single_instruction(ea);
 //    llvm::errs() << *instFunction << '\n';

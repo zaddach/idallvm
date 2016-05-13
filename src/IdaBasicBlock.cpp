@@ -5,9 +5,9 @@ IdaInstruction& IdaBasicBlock::getInstruction(ea_t ea)
 {
     auto itr = instrCache.find(ea);
     if (itr != instrCache.end()) {
-        return itr->second;
+        return *itr->second.get();
     }
     assert(ea != BADADDR && "Invalid address");
-    return instrCache.insert(std::make_pair(ea, IdaInstruction(ea, *this))).first->second;
+    return *instrCache.insert(std::make_pair(ea, std::unique_ptr<IdaInstruction>(new IdaInstruction(ea, *this)))).first->second.get();
 
 }
