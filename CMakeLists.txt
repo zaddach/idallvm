@@ -54,6 +54,18 @@ ExternalProject_Add( libqemu
         INSTALL_COMMAND make install
 )
 
+# See https://cmake.org/pipermail/cmake/2013-October/056105.html
+# and https://github.com/OpenChemistry/openchemistry
+# on how to reorganize the repo to build dependencies and then find them with find_package
+#ExternalProject_Add( qt
+#        URL https://download.qt.io/archive/qt/4.8/4.8.4/qt-everywhere-opensource-src-4.8.4.tar.gz
+#        URL_HASH ALGO=md5 89c5ecba180cae74c66260ac732dc5cb
+#        SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/qt-4.8.4-src
+#        BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/qt-4.8.4-build
+#        INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/qt-4.8.4
+#        CONFIGURE_COMMAND ${CMAKE_CURRENT_BINARY_DIR}/qt-4.8.4-src/configure -opensource -platform linux-g++-32 -shared -no-qt3support -qtnamespace QT -debug-and-release -prefix ${CMAKE_CURRENT_BINARY_DIR}/qt-4.8.4 -confirm-license
+#)
+
 INCLUDE_DIRECTORIES( ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/libqemu/include )
 
 SET( SOURCE_FILES
