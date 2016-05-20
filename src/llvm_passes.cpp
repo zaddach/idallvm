@@ -157,20 +157,26 @@ static bool CpuStructToReg(llvm::Function& f)
                     break;
                 }
                 case llvm::Instruction::Store: {
-                    llvm::StoreInst* store = llvm::cast<llvm::StoreInst>(&inst);
-                    llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
-                    llvm::ConstantInt * ci = llvm::dyn_cast_or_null<llvm::ConstantInt>(md ? md->getOperand(0) : NULL);
-                    if (!ci) {
+                    if (inst.getMetadata("idallvm.value_propagation_barrier")) {
+                        latestStore.clear();
+                        curValues.clear();
+                    }
+                    else {
+                        llvm::StoreInst* store = llvm::cast<llvm::StoreInst>(&inst);
+                        llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
+                        llvm::ConstantInt * ci = llvm::dyn_cast_or_null<llvm::ConstantInt>(md ? md->getOperand(0) : NULL);
+                        if (!ci) {
+                            break;
+                        }
+                        uint64_t offset = ci->getZExtValue();
+                        curValues[offset] = store->getValueOperand();
+                        auto lastStore = latestStore.find(offset);
+                        if (lastStore != latestStore.end()) {
+                            eraseList.push_back(lastStore->second);
+                        }
+                        latestStore[offset] = store;
                         break;
                     }
-                    uint64_t offset = ci->getZExtValue();
-                    curValues[offset] = store->getValueOperand();
-                    auto lastStore = latestStore.find(offset);
-                    if (lastStore != latestStore.end()) {
-                        eraseList.push_back(lastStore->second);
-                    }
-                    latestStore[offset] = store;
-                    break;
                 }
             }
         }
@@ -241,28 +247,6 @@ static bool CpuStructToReg(llvm::Function& f)
     return true;
 }
 
-static bool restoreCallInstructions(llvm::Function& f)
-{
-    for (llvm::BasicBlock& bb : f) {
-        for (llvm::Instruction& inst : bb) {
-            if (llvm::CallInst* call = llvm::dyn_cast<llvm::CallInst>(&inst)) {
-                if (call->getCalledFunction() 
-                    && call->getCalledFunction()->hasName() 
-                    && (call->getCalledFunction()->getName() == "tcg-llvm.opcode_start")) 
-                {
-                    llvm::MDNode* md = call->getMetadata("tcg-llvm.pc");
-                    assert(md && "PC metadata missing");
-                    llvm::ConstantInt* pcCi = llvm::dyn_cast<llvm::ConstantInt>(md->getOperand(0));
-                    assert(pcCi && "PC cannot be converted to ConstantInt");
-                    uint64_t pc = pcCi->getZExtValue();
-
-                }
-            }
-        }
-    }
-
-    return true;
-}
 
 static bool identifyCallsArm(llvm::Function& f)
 {
@@ -302,7 +286,10 @@ static bool identifyCallsArm(llvm::Function& f)
                         else {
                             //Not sure what this is: indirect jump?
                             MSG_WARN("Found indirect jump before 0x%08" PRIx64 ": Does not have return address in LR", ci->getZExtValue());
+                            lastPcStore->setMetadata("idallvm.value_propagation_barrier", llvm::MDNode::get(f.getContext(), std::vector<llvm::Value*>()));
                         }
+
+
                         //There was another control flow in between, this is a barrier for
                         //value propagation
                     }
