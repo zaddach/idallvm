@@ -251,6 +251,8 @@ static bool CpuStructToReg(llvm::Function& f)
 static bool identifyCallsArm(llvm::Function& f)
 {
     std::list<llvm::Instruction*> eraseList;
+    //Function pointer of called assembler functions is of the same type as this function itself
+    llvm::PointerType* functionPointerTy = f.getType();
 
     for (llvm::BasicBlock& bb : f) {
         llvm::ConstantInt* lastPcValue = nullptr;
@@ -262,7 +264,7 @@ static bool identifyCallsArm(llvm::Function& f)
             switch (inst.getOpcode()) {
                 case llvm::Instruction::Call: {
                     llvm::CallInst* call = llvm::cast<llvm::CallInst>(&inst);
-                    if (!call->hasName() || (call->getName() != "tcg-llvm.opcode_start"))
+                    if (!call->getCalledFunction() || !call->getCalledFunction()->hasName() || (call->getCalledFunction()->getName() != "tcg-llvm.opcode_start"))
                         break;
                     llvm::MDNode* md = call->getMetadata("tcg-llvm.pc");
                     assert(md && "PC metadata needs to be present");
@@ -272,10 +274,11 @@ static bool identifyCallsArm(llvm::Function& f)
                     if (!firstInstructionInBB && (!lastPcValue ||  (lastPcValue->getZExtValue() != ci->getZExtValue()))) {
                         if (lastLrValue && (lastLrValue->getZExtValue() == ci->getZExtValue())) {
                             //This is dead sure a call (well, if the called object is a proper function)
+                            llvm::Value* functionPointer = llvm::CastInst::Create(llvm::CastInst::IntToPtr, lastPcStore->getValueOperand(), functionPointerTy, "func_ptr", lastPcStore);
                             llvm::SmallVector<llvm::Value*, 1> args;
                             args.push_back(f.arg_begin());
                             llvm::CallInst* asmCall = llvm::CallInst::Create(
-                                    lastPcStore->getValueOperand(),
+                                    functionPointer,
                                     args,
                                     "",
                                     lastPcStore);
@@ -342,7 +345,6 @@ static bool inlineInstructionCalls(llvm::Function& f)
     }
 
     for (llvm::CallInst* callInst : instructionsToInline) {
-        llvm::errs() << *callInst << '\n';
         llvm::InlineFunctionInfo inlineFunctionInfo;
         llvm::InlineFunction(callInst, inlineFunctionInfo);
     }
@@ -437,11 +439,11 @@ llvm::Function* translate_function_to_llvm(ea_t ea)
     IdaFlowChart flowChart(ea);
     llvm::Function* function = generateOpcodeCallsFromIda(flowChart);
     if (function) {
-        llvm::errs() << "Function before inlining:\n" << *function << '\n';
+//        llvm::errs() << "Function before inlining:\n" << *function << '\n';
         inlineInstructionCalls(*function);
-        llvm::errs() << "Function after inlining:\n" << *function << '\n';
+//        llvm::errs() << "Function after inlining:\n" << *function << '\n';
         identifyCalls(*function);
-        llvm::errs() << "Function after call identification:\n" << *function << '\n';
+//        llvm::errs() << "Function after call identification:\n" << *function << '\n';
     }
 //    llvm::Function* instFunction = translate_single_instruction(ea);
 //    llvm::errs() << *instFunction << '\n';
