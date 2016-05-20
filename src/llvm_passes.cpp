@@ -225,8 +225,8 @@ static bool CpuStructToReg(llvm::Function& f)
                 case llvm::Instruction::Call: 
                     if (inst.getMetadata("idallvm.asm_call")) {
                         curOutgoingValues.clear();
-                        break;
                     }
+                    break;
                 case llvm::Instruction::Store: {
                     llvm::StoreInst* store = llvm::cast<llvm::StoreInst>(&inst);
                     llvm::MDNode* md = inst.getMetadata("tcg-llvm.env_access.offset");
@@ -444,6 +444,7 @@ llvm::Function* translate_function_to_llvm(ea_t ea)
 //        llvm::errs() << "Function after inlining:\n" << *function << '\n';
         identifyCalls(*function);
 //        llvm::errs() << "Function after call identification:\n" << *function << '\n';
+        CpuStructToReg(*function);
     }
 //    llvm::Function* instFunction = translate_single_instruction(ea);
 //    llvm::errs() << *instFunction << '\n';
