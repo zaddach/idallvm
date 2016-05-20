@@ -143,8 +143,17 @@ else()
     llvm_set(VERSION_STRING version)
     llvm_set(CXXFLAGS cxxflags)
     llvm_set(HOST_TARGET host-target)
-    llvm_set(INCLUDE_DIRS includedir true)
+    #llvm_set(INCLUDE_DIRS includedir true)
     llvm_set(ROOT_DIR prefix true)
+
+    STRING( REPLACE " " ";" TMP_CXXFLAGS "${LLVM_CXXFLAGS}" )
+    FOREACH( CXXFLAG ${TMP_CXXFLAGS} )
+        IF( CXXFLAG MATCHES "^-I.*$" )
+            STRING( REGEX REPLACE "^-I" "" INCLUDE_DIR ${CXXFLAG} )
+            LIST( APPEND LLVM_INCLUDE_DIRS ${INCLUDE_DIR} )
+        ENDIF()
+    ENDFOREACH()
+    MARK_AS_ADVANCED( TMP_CXXFLAGS )
 
     if(${LLVM_VERSION_STRING} MATCHES "^3\\.[0-2][\\.0-9A-Za-z]*")
         # Versions below 3.3 do not support components objcarcopts, option
