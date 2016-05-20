@@ -26,6 +26,8 @@ INCLUDE_DIRECTORIES( ${QT_INCLUDE_DIRECTORY} )
 ADD_DEFINITIONS( -DQT_NAMESPACE=QT )
 MARK_AS_ADVANCED( QT_INCLUDE_DIRECTORY )
 
+ADD_DEFINITIONS( -fno-rtti )
+
 # Build qemulib
 IF( NOT CMAKE_BUILD_TYPE )
     SET( QEMU_DEBUG )
@@ -75,7 +77,11 @@ SET( SOURCE_FILES
     "src/plugin_python.cpp"
     "src/llvm_passes.cpp"
     "src/IdaFlowChart.cpp"
-    "src/IdaBasicBlock.cpp" )
+    "src/IdaBasicBlock.cpp"
+    "src/passes/generateOpcodeCallsFromIda.cpp"
+    "src/passes/InlineOpcodeCalls.cpp"
+    "src/passes/CpuStructToReg.cpp"
+    "src/passes/IdentifyCalls.cpp" )
 
 
 ADD_LIBRARY( ida-llvm MODULE ${SOURCE_FILES} )

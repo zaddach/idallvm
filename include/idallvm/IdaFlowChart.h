@@ -3,6 +3,7 @@
 
 #include <map>
 #include <memory>
+#include <string>
 
 #include <pro.h>
 #include <gdl.hpp>

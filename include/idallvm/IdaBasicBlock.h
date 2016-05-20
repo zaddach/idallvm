@@ -7,6 +7,7 @@
 #include <gdl.hpp>
 
 #include "idallvm/IdaFlowChart.h"
+#include "idallvm/IdaInstruction.h"
 
 class IdaBasicBlock;
 class IdaFlowChart;
