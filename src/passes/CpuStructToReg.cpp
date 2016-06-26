@@ -112,6 +112,7 @@ bool CpuStructToReg::runOnFunction(Function& f)
             switch (inst.getOpcode()) {
                 case Instruction::Call: 
                     if (inst.getMetadata("idallvm.asm_call")) {
+                        goto stop_processing_instructions;
                         breakLoop = true;
                         break;
                     }
@@ -128,10 +129,8 @@ bool CpuStructToReg::runOnFunction(Function& f)
                     break;
                 }
             }
-            if (breakLoop) {
-                break;
-            }
         }
+stop_processing_instructions:
 
         for (Instruction& inst : bb) {
             switch (inst.getOpcode()) {

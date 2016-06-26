@@ -1,6 +1,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
+#include <llvm/Transforms/Scalar.h>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -12,6 +13,8 @@
 using llvm::Function;
 using llvm::legacy::FunctionPassManager;
 using llvm::unwrap;
+using llvm::createSCCPPass;
+using llvm::createDeadCodeEliminationPass;
 
 Function* translate_function_to_llvm(ea_t ea) 
 {
@@ -23,6 +26,8 @@ Function* translate_function_to_llvm(ea_t ea)
         fpm->add(createInlineOpcodeCallsPass());
         fpm->add(createIdentifyCallsPass());
         fpm->add(createCpuStructToRegPass());
+//        fpm->add(createSCCPPass());
+        fpm->add(createDeadCodeEliminationPass());
     }
 
     if (function) {

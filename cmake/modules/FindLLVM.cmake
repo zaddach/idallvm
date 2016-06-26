@@ -185,9 +185,7 @@ else()
     endif()
     llvm_set(LIBRARY_DIRS libdir true)
     llvm_set_libs(LIBRARIES libs)
-    llvm_set(SYSTEM_LIBRARIES system-libs)
     llvm_set(CFLAGS cflags)
-    set(LLVM_LIBRARIES ${LLVM_LIBRARIES} ${LLVM_SYSTEM_LIBRARIES})
 endif()
 
 # On CMake builds of LLVM, the output of llvm-config --cxxflags does not

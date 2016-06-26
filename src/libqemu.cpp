@@ -62,6 +62,11 @@ int Libqemu_Load(Processor processor)
         case PROCESSOR_ARM:
             libname = LIBQEMU_LIBNAME_ARM;
             break;
+        case PROCESSOR_I386:
+            libname = LIBQEMU_LIBNAME_I386;
+            break;
+        default:
+            assert(false && "Unknown processor");
     }
 
     get_plugin_dir(plugins_dir, sizeof(plugins_dir));

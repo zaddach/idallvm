@@ -40,8 +40,29 @@ ProcessorInformation ida_get_processor_information(void)
     inf.get_proc_name(processor_name); 
     for (char* p = processor_name; *p; ++p) *p = tolower(*p);
 
-    if (startswith(processor_name, "arm")) {
+    if (strcmp(processor_name, "arm") == 0) {
         processor_info.processor = PROCESSOR_ARM;
+        processor_info.endianness - ENDIANNESS_LITTLE;
+    }
+    else if (strcmp(processor_name, "armb") == 0) {
+        processor_info.processor = PROCESSOR_ARM;
+        processor_info.endianness = ENDIANNESS_BIG;
+    }
+    else if ((strcmp(processor_name, "metapc") == 0) ||
+             (strcmp(processor_name, "80386r") == 0) ||
+             (strcmp(processor_name, "80386p") == 0) ||
+             (strcmp(processor_name, "80486r") == 0) ||
+             (strcmp(processor_name, "80486p") == 0) ||
+             (strcmp(processor_name, "80586r") == 0) ||
+             (strcmp(processor_name, "80586p") == 0) ||
+             (strcmp(processor_name, "80686p") == 0) ||
+             (strcmp(processor_name, "k62") == 0) ||
+             (strcmp(processor_name, "p2") == 0) ||
+             (strcmp(processor_name, "p3") == 0) ||
+             (strcmp(processor_name, "p4") == 0) ||
+             (strcmp(processor_name, "athlon") == 0)) {
+        processor_info.processor = PROCESSOR_I386;
+        processor_info.endianness = ENDIANNESS_LITTLE;
     }
     else {
         MSG_ERROR( "Don't know processor architecture %s", processor_name);
