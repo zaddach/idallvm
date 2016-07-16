@@ -25,6 +25,12 @@
 
 #include <llvm/IR/Function.h>
 #include <llvm/Support/raw_ostream.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/IR/CFG.h>
+#include <llvm/IR/Module.h>
+#include <llvm/Transforms/Scalar.h>
+
+#include <list>
 
 #include "idallvm/plugin.h"
 #include "idallvm/msg.h"
@@ -34,10 +40,17 @@
 #include "idallvm/plugin_python.h"
 #include "idallvm/llvm_passes.h"
 
+using llvm::legacy::FunctionPassManager;
+using llvm::succ_iterator;
+using llvm::succ_begin;
+using llvm::succ_end;
+using llvm::createInstructionNamerPass;
+
 extern plugin_t PLUGIN;
 //--------------------------------------------------------------------------
 static qstrvec_t graph_text;
 static ProcessorInformation processor_info;
+static FunctionPassManager* functionPassManager = nullptr; 
 
 //--------------------------------------------------------------------------
 static const char *get_node_name(int n)
@@ -56,8 +69,60 @@ static const char *get_node_name(int n)
 }
 
 //--------------------------------------------------------------------------
-static int idaapi callback(void *, int code, va_list va)
+
+class IDALLVMFunction
 {
+private:
+    llvm::Function* function;
+    std::vector<std::string> nodeText;
+    std::map<llvm::BasicBlock*, int> bbToIndex;
+    std::list< std::pair<int, int> > edges;
+    std::vector<llvm::BasicBlock*> basicBlocks;
+
+public:
+    IDALLVMFunction(llvm::Function* function) : function(function) {
+        //Run InstructionNamer pass to make printing faster
+        functionPassManager->run(*function);
+        basicBlocks.reserve(function->size());
+        for (llvm::BasicBlock& bb : *function) {
+            bbToIndex.insert(std::make_pair(&bb, basicBlocks.size()));
+            basicBlocks.push_back(&bb);
+        }
+    }
+    llvm::Function* getFunction(void) {return function;}
+
+
+    void generateBasicBlockText(void) {
+        nodeText.clear();
+        nodeText.resize(basicBlocks.size());
+        for (int idx = 0; idx < basicBlocks.size(); ++idx) {
+            llvm::raw_string_ostream ss(nodeText[idx]);
+            //TODO: Make printing more pretty, use COLSTR for colors, nice names, ...
+            ss << *basicBlocks[idx];
+            ss.flush();
+        }
+    }
+    const char* getBasicBlockText(int idx) {return nodeText.at(idx).c_str();}
+    int getBasicBlockIndex(llvm::BasicBlock* bb) {auto itr = bbToIndex.find(bb); return itr != bbToIndex.end() ? itr->second : -1;}
+    int getNumBasicBlocks(void) {return basicBlocks.size();}
+    std::list< std::pair< int, int > > const& getEdges(void) {
+        if (edges.size() == 0) {
+            for (int bbIdx = 0; bbIdx < basicBlocks.size(); ++bbIdx) {
+                for (succ_iterator sitr = succ_begin(basicBlocks.at(bbIdx)), send = succ_end(basicBlocks.at(bbIdx)); sitr != send; ++sitr) {
+                    assert(bbToIndex.find(*sitr) != bbToIndex.end() && "Basic block must be in the map of BBs to indices");
+                    edges.push_back(std::make_pair(bbIdx, bbToIndex[*sitr]));
+                }
+            }
+        }
+        return edges;
+    }
+};
+
+static int idaapi callback(void* userdata, int code, va_list va)
+{
+  IDALLVMFunction* data = static_cast<IDALLVMFunction*>(userdata);
+//  msg("callback(userdata = %p, code = %d, va = %p)\n", userdata, code, va);
+
   int result = 0;
   switch ( code )
   {
@@ -201,15 +266,12 @@ static int idaapi callback(void *, int code, va_list va)
        //       \-> 3 -> 4 -> 5 -> 6
        //           ^        /
        //           \-------/
-       if ( g->empty() )
-         g->resize(7);
-       g->add_edge(0, 1, NULL);
-       g->add_edge(1, 2, NULL);
-       g->add_edge(1, 3, NULL);
-       g->add_edge(3, 4, NULL);
-       g->add_edge(4, 5, NULL);
-       g->add_edge(5, 3, NULL);
-       g->add_edge(5, 6, NULL);
+       if (g->empty()) {
+           g->resize(data->getNumBasicBlocks());
+       }
+       for (std::pair< int, int > const& edge : data->getEdges()) {
+           g->add_edge(edge.first, edge.second, NULL);
+       }
        result = true;
      }
      break;
@@ -220,13 +282,9 @@ static int idaapi callback(void *, int code, va_list va)
      {
        mutable_graph_t *g = va_arg(va, mutable_graph_t *);
        msg("%p: generate text for graph nodes\n", g);
-       graph_text.resize(g->size());
-       for ( node_iterator p=g->begin(); p != g->end(); ++p )
-       {
-         int n = *p;
-         graph_text[n] = get_node_name(n);
-       }
+       data->generateBasicBlockText();
        result = true;
+       qnotused(g);
      }
      break;
 
@@ -242,7 +300,7 @@ static int idaapi callback(void *, int code, va_list va)
        int node           = va_arg(va, int);
        const char **text  = va_arg(va, const char **);
        bgcolor_t *bgcolor = va_arg(va, bgcolor_t *);
-       *text = graph_text[node].c_str();
+       *text = data->getBasicBlockText(node);
        if ( bgcolor != NULL )
          *bgcolor = DEFCOLOR;
        result = true;
@@ -399,6 +457,9 @@ int idaapi PLUGIN_init(void)
         }
     }
     hook_to_notification_point(HT_UI, on_ui_notification, NULL);
+
+    functionPassManager = new FunctionPassManager(llvm::unwrap(Libqemu_GetModule()));
+    functionPassManager->add(createInstructionNamerPass());
   
     return ida_is_graphical_mode() ? PLUGIN_KEEP : PLUGIN_SKIP;
 }
@@ -423,7 +484,7 @@ void idaapi PLUGIN_run(int /*arg*/)
         msg("LLVM: %s\n", ss.str().c_str());
     }
 
-/*   
+   
     HWND hwnd = NULL;
     TForm *form = create_tform("LLVM", &hwnd);
     if ( hwnd != NULL )
@@ -431,11 +492,16 @@ void idaapi PLUGIN_run(int /*arg*/)
         // get a unique graph id
         netnode id;
         id.create("$ ugraph sample");
-        graph_viewer_t *gv = create_graph_viewer(form,  id, callback, NULL, 0);
+        graph_viewer_t *gv = create_graph_viewer(form,  id, callback, new IDALLVMFunction(function), 0);
         open_tform(form, FORM_TAB|FORM_MENU|FORM_QWIDGET);
         if ( gv != NULL )
         {
-            viewer_fit_window(gv);
+            mutable_graph_t *g = get_viewer_graph(gv);
+            g->current_layout = layout_digraph;
+            g->redo_layout();
+            refresh_viewer(gv);
+            viewer_center_on(gv, 0);
+            //viewer_fit_window(gv);
 //            viewer_add_menu_item(gv, "User function", menu_callback, gv, NULL, 0);
         }
     }
@@ -443,7 +509,7 @@ void idaapi PLUGIN_run(int /*arg*/)
     {
         close_tform(form, 0);
     }
-*/
+
 }
 
 //--------------------------------------------------------------------------
