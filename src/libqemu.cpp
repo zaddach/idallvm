@@ -1,8 +1,11 @@
 #include <QtCore/QLibrary>
+#include <QtCore/QDir>
+#include <QtCore/QFileInfo>
 
 #include <pro.h>
 
 #include <llvm/IR/Module.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include "idallvm/msg.h"
 #include "idallvm/libqemu.h"
@@ -25,19 +28,19 @@ static int is_searched_plugin(const char* file, void* ud)
     return 1;
 }
 
-static int get_plugin_dir(char* path, size_t path_size)
+static QDir get_plugin_dir(void)
 {
+    char path[256] = {0};
     const extlang_t* extlang = NULL;
     int err = enum_plugins(is_searched_plugin,
             NULL,
             path,
-            path_size,
+            sizeof(path),
             &extlang);
     if (*path) {
-        qdirname(path, path_size, path);
+        return QFileInfo(path).dir();
     }
-
-    return 0;
+    return QDir();
 }
 
 
@@ -57,7 +60,6 @@ llvm::Type* Libqemu_GetCpustateType(void)
 int Libqemu_Load(Processor processor)
 {
     const char* libname = NULL;
-    char plugins_dir[256];
     switch(processor) {
         case PROCESSOR_ARM:
             libname = LIBQEMU_LIBNAME_ARM;
@@ -69,13 +71,14 @@ int Libqemu_Load(Processor processor)
             assert(false && "Unknown processor");
     }
 
-    get_plugin_dir(plugins_dir, sizeof(plugins_dir));
-    qmakepath(plugins_dir, sizeof(plugins_dir), plugins_dir, libname);
+    QDir plugins_dir = get_plugin_dir();
+    QString libpath = plugins_dir.filePath(libname);
 
-    lib = new QLibrary(plugins_dir);
+    lib = new QLibrary(libpath);
     lib->setLoadHints(QLibrary::ResolveAllSymbolsHint);
     if (!lib->load()) {
-        MSG_ERROR("Cannot open libqemu library %s: %s", plugins_dir, lib->errorString().toLatin1().data());
+        llvm::errs() << "Cannot open libqemu library '" << libpath.toLatin1().data() << "': " << lib->errorString().toLatin1().data() << '\n';
+        MSG_ERROR("Cannot open libqemu library %s: %s", libpath.toLatin1().data(), lib->errorString().toLatin1().data());
         return -1;
     }
 
