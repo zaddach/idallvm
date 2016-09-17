@@ -35,6 +35,12 @@
 #include "idallvm/IdaFlowChart.h"
 #include "idallvm/IdaInstruction.h"
 
+using llvm::MDNode;
+using llvm::SmallVector;
+using llvm::Value;
+using llvm::Type;
+using llvm::ConstantInt;
+
 struct TranslateBasicBlock;
 
 struct TranslateBasicBlock
@@ -135,6 +141,12 @@ llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart)
         const int num_successors = bb->idaBasicBlock.getSuccessors().size();
         llvm::GetElementPtrInst* gepInst = llvm::GetElementPtrInst::CreateInBounds(function->arg_begin(), getPcIndices(function->getContext()), "ptr_PC", bb->llvmBasicBlock);
         llvm::LoadInst* loadInst = new llvm::LoadInst(gepInst, "PC", bb->llvmBasicBlock);
+        RegisterInfo const* ri = Libqemu_GetRegisterInfoPc();
+        //Load offset is needed in the later CpuStructToReg pass to eliminate this load
+        loadInst->setMetadata("tcg-llvm.env_access.offset",
+                              MDNode::get(bb->llvmBasicBlock->getContext(),
+                                          SmallVector<Value*, 1>(1, ConstantInt::get(Type::getInt32Ty(bb->llvmBasicBlock->getContext()),
+                                                                                     ri->offset))));
         llvm::SwitchInst* switchInst = llvm::SwitchInst::Create(loadInst, unknownJumpTargetSink, num_successors, bb->llvmBasicBlock);
 
         for (IdaBasicBlock& successor : bb->idaBasicBlock.getSuccessors()) {
