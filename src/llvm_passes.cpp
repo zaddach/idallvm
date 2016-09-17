@@ -2,6 +2,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Transforms/Scalar.h>
+#include <llvm/CodeGen/Passes.h>
 
 #include <llvm/Support/raw_ostream.h>
 
@@ -15,6 +16,7 @@ using llvm::legacy::FunctionPassManager;
 using llvm::unwrap;
 using llvm::createSCCPPass;
 using llvm::createDeadCodeEliminationPass;
+using llvm::createUnreachableBlockEliminationPass;
 
 Function* translate_function_to_llvm(ea_t ea) 
 {
@@ -25,8 +27,10 @@ Function* translate_function_to_llvm(ea_t ea)
         fpm.reset(new FunctionPassManager(unwrap(Libqemu_GetModule())));
         fpm->add(createInlineOpcodeCallsPass());
         fpm->add(createIdentifyCallsPass());
-        fpm->add(createCpuStructToRegPass());
+        //fpm->add(createCpuStructToRegPass());
+        fpm->add(createFixBasicBlockEdgesPass());
 //        fpm->add(createSCCPPass());
+        fpm->add(createUnreachableBlockEliminationPass());
         fpm->add(createDeadCodeEliminationPass());
     }
 
