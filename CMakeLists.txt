@@ -74,6 +74,7 @@ SET( SOURCE_FILES
     "src/plugin_main.cpp"
     "src/ida_util.cpp"
     "src/libqemu.cpp"
+    "src/msg.cpp"
     "src/plugin_python.cpp"
     "src/llvm_passes.cpp"
     "src/IdaFlowChart.cpp"
