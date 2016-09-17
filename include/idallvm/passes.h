@@ -2,6 +2,7 @@
 #define _IDALLVM_PASSES_H
 
 #include <llvm/IR/Function.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/Pass.h>
 
 #include "idallvm/IdaBasicBlock.h"
@@ -9,7 +10,7 @@
 
 llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart);
 llvm::FunctionPass* createIdentifyCallsPass(void);
-llvm::FunctionPass* createCpuStructToRegPass(void);
+llvm::BasicBlockPass* createCpuStructToRegPass(void);
 llvm::FunctionPass* createInlineOpcodeCallsPass(void);
 
 #endif /* _IDALLVM_PASSES_H */
