@@ -355,15 +355,7 @@ static int idaapi callback(void* userdata, int code, va_list va)
        int mouseedge_src  = va_argi(va, int);
        int mouseedge_dst  = va_argi(va, int);
        char **hint        = va_arg(va, char **);
-       char buf[MAXSTR];
-       buf[0] = '\0';
-       if ( mousenode != -1 )
-         qsnprintf(buf, sizeof(buf), "My fancy hint for node %d", mousenode);
-       else if ( mouseedge_src != -1 )
-         qsnprintf(buf, sizeof(buf), "Hovering on (%d,%d)", mouseedge_src, mouseedge_dst);
-       if ( buf[0] != '\0' )
-         *hint = qstrdup(buf);
-       result = true; // use our hint
+       result = false; // use our hint
        qnotused(g);
      }
      break;
