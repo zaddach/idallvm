@@ -4,6 +4,8 @@
 class ida_raw_ostream : public llvm::raw_ostream
 {
 public:
+    ida_raw_ostream(void) : raw_ostream(true) {}
+
     void write_impl(const char *ptr, size_t size) override {
         char* buf = static_cast<char*>(alloca(size + 1));
         memcpy(buf, ptr, size);
