@@ -83,7 +83,9 @@ SET( SOURCE_FILES
     "src/passes/InlineOpcodeCalls.cpp"
     "src/passes/CpuStructToReg.cpp"
     "src/passes/IdentifyCalls.cpp"
-    "src/passes/FixBasicBlockEdges.cpp" )
+    "src/passes/FixBasicBlockEdges.cpp"
+    "src/passes/LiftAsmStack.cpp"
+    )
 
 
 ADD_LIBRARY( ida-llvm MODULE ${SOURCE_FILES} )
