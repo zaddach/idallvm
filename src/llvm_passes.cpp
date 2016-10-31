@@ -30,6 +30,7 @@ Function* translate_function_to_llvm(ea_t ea)
         //fpm->add(createCpuStructToRegPass());
         fpm->add(createFixBasicBlockEdgesPass());
 //        fpm->add(createSCCPPass());
+        fpm->add(createLiftAsmStackPass());
         fpm->add(createUnreachableBlockEliminationPass());
         fpm->add(createDeadCodeEliminationPass());
     }

@@ -8,6 +8,8 @@
 #include "llvm/IR/CFG.h"
 #include "llvm/ADT/DepthFirstIterator.h"
 
+#include <sstream>
+
 using llvm::Function;
 using llvm::Instruction;
 using llvm::CallInst;
@@ -25,6 +27,16 @@ using llvm::cast;
 using llvm::dyn_cast;
 using llvm::df_begin;
 using llvm::df_end;
+using llvm::LLVMContext;
+using llvm::IntegerType;
+using llvm::Type;
+using llvm::StructType;
+using llvm::AllocaInst;
+using llvm::GetElementPtrInst;
+using llvm::SmallVector;
+using llvm::makeArrayRef;
+using llvm::Twine;
+
 
 char LiftAsmStack::ID = 0;
 
@@ -113,6 +125,9 @@ static bool backtrackStackOffset(Value* value, uint64_t envSpOffset, std::map< L
                 }
                 break;
             }
+            case Instruction::ZExt: {
+                return backtrackStackOffset(inst->getOperand(0), envSpOffset, stackDepth, stackOffset);
+            }
             default: {
                 outs() << "LiftAsmStack - ERROR: Backtracking not implemented for instruction " << *inst << " in BB " << inst->getParent()->getName() << '\n';
                 return false;
@@ -150,6 +165,18 @@ static bool isStackRelative(Value* value, uint64_t envSpOffset) {
     }
 }
 
+static std::string hex(int64_t x)
+{
+    std::stringstream ss;
+
+    if (x < 0) {
+        ss << "-0x" << (-x);
+    } else {
+        ss << "0x" << std::hex << x;
+    }
+    return ss.str();
+}
+
 
 //Start at entry BB by finding load of stack pointer
 //Assign value 0 to max stack depth
@@ -157,6 +184,7 @@ static bool isStackRelative(Value* value, uint64_t envSpOffset) {
 //If use is a phi node, spawn a new state
 //If 
 bool LiftAsmStack::runOnFunction(Function &f) {
+    LLVMContext& ctx = f.getContext();
     RegisterInfo const* ri = Libqemu_GetRegisterInfoSp();
     assert(ri && "Cannot get SP register info");
 
@@ -209,7 +237,7 @@ bool LiftAsmStack::runOnFunction(Function &f) {
                         isStackRelative(call->getArgOperand(1), ri->offset)) 
                     {
                         int64_t frameOffset = 0;
-                        if (backtrackStackOffset(call->getArgOperand(0), ri->offset, loadStackDepth, frameOffset)) {
+                        if (backtrackStackOffset(call->getArgOperand(1), ri->offset, loadStackDepth, frameOffset)) {
                             stackAccesses.push_back(std::make_pair(call, frameOffset));
                         }
                         else {
@@ -240,141 +268,97 @@ bool LiftAsmStack::runOnFunction(Function &f) {
         }
     }
 
-//	m_maxStackDepth = 0;
-//	m_minStackDepth = 0;
-//	m_dynamicStackFrameSize = false;
-//	m_stackFrameError = false;
-//    m_stackDepth.clear();
-//
-//	while (!valuesToVisit.empty())  {
-//		Value* curValue = valuesToVisit.front().first;
-//		int64_t stackDepth = valuesToVisit.front().second;
-//		valuesToVisit.pop_front();
-//
-//		if (stackDepth < m_maxStackDepth)  {
-//			m_maxStackDepth = stackDepth;
-//		}
-//		if (stackDepth > m_minStackDepth) {
-//			m_minStackDepth = stackDepth;
-//		}
-//
-//		for (Value::use_iterator useItr = curValue->use_begin(), useEnd = curValue->use_end(); useItr != useEnd; useItr++)  {
-//			PHINode* phi = dyn_cast<PHINode>(*useItr);
-//			if (phi)  {
-//				if (visitedPHINodes.find(phi) == visitedPHINodes.end())  {
-//					visitedPHINodes.insert(std::make_pair(phi, stackDepth));
-//					valuesToVisit.push_back(std::make_pair(phi, stackDepth));
-//				}
-//				else {
-//					if (visitedPHINodes[phi] != stackDepth)  {
-//						m_dynamicStackFrameSize = true;	
-//					}
-//				}
-//				continue;
-//			}
-//
-//			BinaryOperator* op = dyn_cast<BinaryOperator>(*useItr);
-//			if (op)  {
-//				Value* otherOperand;
-//				assert(op->getNumOperands() == 2);
-//				if (op->getOperand(0) == curValue)  {
-//					otherOperand = op->getOperand(1);
-//				} else  {
-//					assert(op->getOperand(1) == curValue);
-//					otherOperand = op->getOperand(0);
-//				}
-//
-//				switch (op->getOpcode()) {
-//					case Instruction::Add:
-//					{
-//						ConstantInt* constantInt = dyn_cast<ConstantInt>(otherOperand);
-//						if (constantInt)  {
-//							int64_t addedVal = constantInt->getSExtValue();
-//							valuesToVisit.push_back(std::make_pair(op, stackDepth + addedVal));
-//						}
-//						break;
-//					}
-//					default:  {
-//						errs() << "[LiftAsmStack] WARNING: Unhandled stack operation " << *op << " in BB " << op->getParent()->getName() << ", function " << f.getName() << '\n';
-//						break;
-//					}
-//				}
-//				continue;
-//			}
-//
-//			StoreInst* store = dyn_cast<StoreInst>(*useItr);
-//			if (store && store->getMetadata("trans.keep_store"))  {
-//				//This should be just before the return
-//				if (stackDepth != 0)  {
-//					m_stackFrameError = true;	
-//					errs() << "[LiftAsmStack] WARNING: Stack depth at function " << f.getName() << " exit is not 0: " << stackDepth << '\n';
-//				}
-//				continue;
-//			}
-//
-//			CallInst* call = dyn_cast<CallInst>(*useItr);
-//			if (call)  {
-//                Type* accessType;
-//				AccessInfo::LoadStore loadStore = AccessInfo::LOAD;
-//				if (call->getCalledFunction()->getName() == "__stl_mmu")  {
-//					accessType = call->getArgOperand(1)->getType();
-//					loadStore = AccessInfo::STORE;
-//				}
-//				else if (call->getCalledFunction()->getName() == "__sts_mmu")  {
-//					accessType = call->getArgOperand(1)->getType();
-//					loadStore = AccessInfo::STORE;
-//				}
-//				else if (call->getCalledFunction()->getName() == "__stb_mmu")  {
-//					accessType = call->getArgOperand(1)->getType();
-//					loadStore = AccessInfo::STORE;
-//				}
-//				else if (call->getCalledFunction()->getName() == "__ldl_mmu")  {
-//                    accessType = call->getType();
-//					loadStore = AccessInfo::LOAD;
-//				}
-//				else if (call->getCalledFunction()->getName() == "__lds_mmu")  {
-//                    accessType = call->getType();
-//					loadStore = AccessInfo::LOAD;
-//				}
-//				else if (call->getCalledFunction()->getName() == "__ldb_mmu")  {
-//                    accessType = call->getType();
-//					loadStore = AccessInfo::LOAD;
-//				}
-//				else {
-//					m_stackFrameError = true;
-//					errs() << "[LiftAsmStack] WARNING: Unknown function call with argument derived from stack pointer: '" << call->getCalledFunction()->getName() << "'" << '\n';
-//				}
-//
-//				if (accessType)  {
-//					AccessInfo& accessInfo = m_stackDepth[call];
-//					accessInfo.stackDepth = stackDepth;
-//					accessInfo.type = accessType;
-//					accessInfo.loadStore = loadStore;
-//
-//                    errs() << "[LiftAsmStack] DEBUG: " << (loadStore == AccessInfo::STORE ? "Store to" : "Load from")  
-//                           << " stack at "  << stackDepth << " with type " << *accessType
-//                           << '\n';
-//				}
-//				continue;
-//			}
-//
-//			Instruction* inst = dyn_cast<Instruction>(*useItr);
-//			if (inst)  {
-//				m_stackFrameError = true;
-//				errs() << "[LiftAsmStack] WARNING: Unhandled stack instruction " << *inst << " in BB " << inst->getParent()->getName() << ", function " << f.getName() << '\n';
-//			}
-//			else  {
-//				m_stackFrameError = true;
-//				errs() << "[LiftAsmStack] WARNING: Unhandled stack value " << **useItr << " in function " << f.getName() << '\n';
-//			}
-//		}
-//	}
+    if (stackAccesses.empty()) {
+        //If there are no stack accesses, we're done
+        return 0;
+    }
 
+    //Get stack element sizes
+    std::map< int64_t, uint64_t > stackElementSizes;
+    std::map< uint64_t, unsigned > const SHIFT_TO_SIZE = {{0, 1}, {1, 2}, {2, 4}, {3, 8}};
+    for (auto const& elem : stackAccesses) {
+        uint64_t shift = cast<ConstantInt>(elem.first->getArgOperand(2))->getZExtValue();
+        assert(SHIFT_TO_SIZE.find(shift) != SHIFT_TO_SIZE.end());
+        unsigned size = SHIFT_TO_SIZE.find(shift)->second;
+        if (stackElementSizes[elem.second] < size) {
+            stackElementSizes[elem.second] = size;
+        }
+    }
+
+    //NOTE: Stack frame reconstruction is not super clean.
+    //Right now, everything _should_ work, even if the address of a
+    //stack value is taken. The only case where this heuristics will fail is
+    //if stack references are not cleanly passed to called functions (i.e.,
+    //a called function accesses a stack value from another stack frame).
+    //Stack arrays are not recovered cleanly, but the space occupied by them
+    //is allocated correctly in the stack frame (possibly not with the correct type).
+    std::vector< Type* > stackElementTypes;
+    std::map< int64_t, unsigned > indices;
+    int64_t prevOffset = INT64_MIN;
+    //std::map is ordered by key
+    for (auto const& elemSize : stackElementSizes) {
+        if (prevOffset != INT64_MIN) {
+            int64_t align = elemSize.first - prevOffset;
+            while (align > 0) {
+                if (align >= 8) {
+                    stackElementTypes.push_back(IntegerType::get(ctx, 8 * 8));
+                    align -= 8;
+                }
+                else if (align >= 4) {
+                    stackElementTypes.push_back(IntegerType::get(ctx, 4 * 8));
+                    align -= 4;
+                }
+                else if (align >= 2) {
+                    stackElementTypes.push_back(IntegerType::get(ctx, 2 * 8));
+                    align -= 2;
+                }
+                else {
+                    stackElementTypes.push_back(IntegerType::get(ctx, 1 * 8));
+                    align -= 1;
+                }
+            }
+        }
+
+        indices[elemSize.first] = stackElementTypes.size();
+        stackElementTypes.push_back(IntegerType::get(ctx, elemSize.second * 8));
+    }
+
+    StructType* stackFrameType = StructType::create(ctx, stackElementTypes, ("stackframe_type_" + f.getName()).str(), true);
+
+    //Allocate stack frame first thing in the function
+    AllocaInst* frameAlloca = new AllocaInst(stackFrameType, ("stackframe_" + f.getName()).str(), f.getEntryBlock().getFirstInsertionPt());
+    std::list< CallInst* > eraseList;
+    for (auto const& elem : stackAccesses) {
+        unsigned index = indices[elem.second];
+        SmallVector<Value*, 2> vec;
+        vec.push_back(ConstantInt::get(Type::getInt32Ty(ctx), 0));
+        vec.push_back(ConstantInt::get(Type::getInt32Ty(ctx), index));
+        GetElementPtrInst* gep = GetElementPtrInst::CreateInBounds(frameAlloca, makeArrayRef(vec), "stackframe_" + hex(elem.second), elem.first);
+        if (elem.first->getCalledFunction()->getName() == "helper_libqemu_st") {
+            CastInst* cast = CastInst::CreateIntegerCast(elem.first->getArgOperand(4), gep->getType()->getElementType(), false, "cast_stackframe_" + hex(elem.second), elem.first); 
+            new StoreInst(cast, gep, elem.first);
+            eraseList.push_back(elem.first);
+        }
+        else if (elem.first->getCalledFunction()->getName() == "helper_libqemu_ld") {
+            LoadInst* load = new LoadInst(gep, "stackframe_", elem.first);
+            CastInst* cast = CastInst::CreateZExtOrBitCast(load, elem.first->getType(), "cast_stackframe_" + hex(elem.second), elem.first); 
+            elem.first->replaceAllUsesWith(cast);
+            eraseList.push_back(elem.first);
+        }
+    }
+
+    for (auto inst : eraseList) {
+        inst->eraseFromParent();
+    }
 
 	return false;
 }
 
 void LiftAsmStack::getAnalysisUsage(AnalysisUsage& usage) const {
+}
+
+LiftAsmStack* createLiftAsmStackPass(void) {
+    return new LiftAsmStack();
 }
 
 static RegisterPass<LiftAsmStack> X("LiftAsmStack", "Convert accesses to memory relative to the stack to alloca'd variables", true, true);
