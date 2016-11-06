@@ -11,7 +11,7 @@
 #include "idallvm/passes/IdentifyCalls.h"
 #include "idallvm/passes/InlineOpcodeCalls.h"
 #include "idallvm/passes/FixBasicBlockEdges.h"
-#include "idallvm/passes/CpuStructToReg.h"
+#include "idallvm/passes/LiftAsmRegisters.h"
 #include "idallvm/passes.h"
 #include "idallvm/libqemu.h"
 #include "idallvm/msg.h"

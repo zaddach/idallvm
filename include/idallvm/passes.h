@@ -10,9 +10,10 @@
 
 llvm::Function* generateOpcodeCallsFromIda(IdaFlowChart& flowChart);
 llvm::FunctionPass* createIdentifyCallsPass(void);
-llvm::BasicBlockPass* createCpuStructToRegPass(void);
+llvm::FunctionPass* createLiftAsmRegistersPass(void);
 llvm::FunctionPass* createInlineOpcodeCallsPass(void);
 llvm::FunctionPass* createFixBasicBlockEdgesPass(void);
 llvm::FunctionPass* createLiftAsmStackPass(void);
+llvm::FunctionPass* createLiftAsmReturnPass(void);
 
 #endif /* _IDALLVM_PASSES_H */

@@ -81,10 +81,11 @@ SET( SOURCE_FILES
     "src/IdaBasicBlock.cpp"
     "src/passes/generateOpcodeCallsFromIda.cpp"
     "src/passes/InlineOpcodeCalls.cpp"
-    "src/passes/CpuStructToReg.cpp"
     "src/passes/IdentifyCalls.cpp"
     "src/passes/FixBasicBlockEdges.cpp"
     "src/passes/LiftAsmStack.cpp"
+    "src/passes/LiftAsmRegisters.cpp"
+    "src/passes/LiftAsmReturn.cpp"
     )
 
 
