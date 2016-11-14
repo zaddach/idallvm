@@ -1,3 +1,6 @@
 [submodule "libqemu"]
 	path = libqemu
 	url = git@github.com:zaddach/libqemu.git
+[submodule "cbe"]
+	path = cbe
+	url = https://github.com/JuliaComputing/llvm-cbe
