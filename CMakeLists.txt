@@ -56,6 +56,8 @@ ExternalProject_Add( libqemu
         INSTALL_COMMAND make install
 )
 
+ADD_SUBDIRECTORY(cbe)
+
 # See https://cmake.org/pipermail/cmake/2013-October/056105.html
 # and https://github.com/OpenChemistry/openchemistry
 # on how to reorganize the repo to build dependencies and then find them with find_package
@@ -86,6 +88,7 @@ SET( SOURCE_FILES
     "src/passes/LiftAsmStack.cpp"
     "src/passes/LiftAsmRegisters.cpp"
     "src/passes/LiftAsmReturn.cpp"
+    "src/passes/LiftAsmReturnArm.cpp"
     )
 
 
@@ -97,7 +100,9 @@ SET_TARGET_PROPERTIES(
     SUFFIX "${IDA_PLUGIN_SUFFIX}"
     OUTPUT_NAME ida-llvm )
 ADD_DEPENDENCIES( ida-llvm libqemu )
-TARGET_LINK_LIBRARIES( ida-llvm ${IDA_LIBRARIES} ${LLVM_LIBRARIES} ${PYTHON_LIBRARIES} Qt4::QtCore ${LLVM_SYSTEM_LIBS} ) 
+TARGET_LINK_LIBRARIES( ida-llvm ${IDA_LIBRARIES} ${LLVM_LIBRARIES} ${PYTHON_LIBRARIES} 
+                                Qt4::QtCore ${LLVM_SYSTEM_LIBS} CBackendCodeGen 
+                                LLVMCBackendInfo ) 
 
 INSTALL( 
     TARGETS ida-llvm
